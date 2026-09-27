@@ -17,6 +17,7 @@ dependencies:
   # Generation
   qr_flutter: ^4.1.0
   barcode_widget: ^2.0.4
+  barcode: ^2.2.8
 
   # Permissions
   permission_handler: ^11.3.1

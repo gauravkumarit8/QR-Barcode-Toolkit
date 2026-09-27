@@ -30,10 +30,11 @@ you build — check items off in your own Codespace and commit the change.
       image_gallery_saver (MediaStore-backed, scoped storage compliant)
 - [x] Share — shares the generated PNG + text via share_plus
 - [x] Save to History — functional
-- [ ] Per-type input forms (WiFi needs SSID/password/encryption dropdown, etc. —
-      currently one shared text field regardless of selected type)
-- [ ] Barcode format rendering (barcode_widget dependency present, not yet used —
-      selecting "Barcode" chip still renders a QR code, not a real barcode)
+- [x] Per-type input forms — Text, URL, Phone (tel: prefix), WiFi (SSID/password/
+      encryption dropdown building a proper WIFI: string) all have their own fields now
+- [x] Barcode format rendering — Code128/EAN-13/UPC-A/Code39/ITF via barcode_widget,
+      with an errorBuilder so an invalid value (e.g. wrong digit count for EAN-13)
+      shows a message instead of crashing
 - [ ] Size/margin sliders, color picker + logo (Pro-gated, v2)
 
 ## History tab
@@ -43,9 +44,8 @@ you build — check items off in your own Codespace and commit the change.
 - [x] List rendering from real data, newest first
 - [x] Swipe to delete (Dismissible)
 - [x] Detail view (Copy / Open / Share / Delete) — functional
-- [ ] "Re-generate" button in detail view is a no-op — needs a way to hand the
-      value back to GenerateScreen and switch tabs (simplest: lift state to
-      RootShell and pass a callback down, or use a shared InheritedWidget)
+- [x] "Re-generate" button — wired via a shared ValueNotifier held in RootShell;
+      tapping it switches to the Generate tab with the value prefilled as Text type
 - [ ] Search bar
 
 ## Settings / Pro

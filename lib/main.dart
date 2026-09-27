@@ -42,13 +42,28 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _currentIndex = 0;
 
+  // Shared between History ("Re-generate") and Generate (consumes the value).
+  // Set by History, cleared by Generate once it has read the value.
+  final ValueNotifier<String?> _regeneratePrefill = ValueNotifier(null);
+
   static const _titles = ['Scan', 'Generate', 'History'];
 
-  final List<Widget> _screens = const [
-    ScanScreen(),
-    GenerateScreen(),
-    HistoryScreen(),
+  late final List<Widget> _screens = [
+    const ScanScreen(),
+    GenerateScreen(regeneratePrefill: _regeneratePrefill),
+    HistoryScreen(
+      onRegenerate: (value) {
+        _regeneratePrefill.value = value;
+        setState(() => _currentIndex = 1);
+      },
+    ),
   ];
+
+  @override
+  void dispose() {
+    _regeneratePrefill.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

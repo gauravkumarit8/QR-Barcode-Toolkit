@@ -6,7 +6,9 @@ import '../models/history_item.dart';
 import '../services/history_service.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final ValueChanged<String> onRegenerate;
+
+  const HistoryScreen({super.key, required this.onRegenerate});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -40,6 +42,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         onDelete: () {
           Navigator.pop(context);
           _delete(item.id);
+        },
+        onRegenerate: () {
+          Navigator.pop(context);
+          widget.onRegenerate(item.value);
         },
       ),
     );
@@ -103,8 +109,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 class _DetailSheet extends StatelessWidget {
   final HistoryItem item;
   final VoidCallback onDelete;
+  final VoidCallback onRegenerate;
 
-  const _DetailSheet({required this.item, required this.onDelete});
+  const _DetailSheet({
+    required this.item,
+    required this.onDelete,
+    required this.onRegenerate,
+  });
 
   bool get _isUrl {
     final uri = Uri.tryParse(item.value);
@@ -154,12 +165,7 @@ class _DetailSheet extends StatelessWidget {
               TextButton.icon(
                 icon: const Icon(Icons.refresh),
                 label: const Text('Re-generate'),
-                onPressed: () {
-                  // TODO: navigate to Generate tab prefilled with item.value —
-                  // needs a shared navigation/state approach (e.g. a callback
-                  // passed down from RootShell, or a simple InheritedWidget).
-                  Navigator.pop(context);
-                },
+                onPressed: onRegenerate,
               ),
               TextButton.icon(
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
