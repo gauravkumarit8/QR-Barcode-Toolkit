@@ -1,0 +1,44 @@
+name: qr_barcode_toolkit
+description: Offline-first QR & Barcode scan/generate/history toolkit.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Scanning
+  mobile_scanner: ^5.2.3
+
+  # Generation
+  qr_flutter: ^4.1.0
+  barcode_widget: ^2.0.4
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  # Ads
+  google_mobile_ads: ^5.1.0
+
+  # Storage / persistence
+  shared_preferences: ^2.2.3
+  path_provider: ^2.1.3
+  image_gallery_saver: ^2.0.3
+
+  # Sharing
+  share_plus: ^9.0.0
+
+  # Opening scanned links safely
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
