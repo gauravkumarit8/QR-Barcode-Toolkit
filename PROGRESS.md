@@ -7,9 +7,7 @@ you build — check items off in your own Codespace and commit the change.
 - [x] devcontainer.json + setup.sh (Flutter + Android SDK bootstrap)
 - [x] pubspec.yaml with core dependencies declared (incl. url_launcher)
 - [x] Project skeleton (main.dart, 3 tabs, settings screen, service stubs)
-- [x] GitHub Actions CI: builds release APK on push to main, uploads as artifact
-      (unsigned — uses debug signing by default; fine for internal testing,
-      NOT for Play Store upload — see "Release signing" below)
+- [x] GitHub Actions CI: debug APK on every push to main; signed release AAB on version tags / manual run (see "Release signing" below)
 - [ ] `flutter doctor` clean on Codespace
 - [ ] Package ID finalized (`com.yourcompany.qrbarcodetoolkit` placeholder still in build.gradle)
 
@@ -76,11 +74,13 @@ you build — check items off in your own Codespace and commit the change.
 - [ ] Target SDK / API level pinned to current Play requirement
 
 ## Release signing (needed before any Play Store upload)
-- [ ] Generate an upload keystore (`keytool -genkey -v -keystore ...`)
-- [ ] Add `key.properties` (gitignored) + reference it in `android/app/build.gradle`
-- [ ] Update build.yaml to inject signing secrets via GitHub Actions secrets
-      before producing a Play-uploadable APK/AAB (current CI build is debug-signed)
-- [ ] Switch `flutter build apk` → `flutter build appbundle` for Play Store (AAB required)
+- [x] build.yaml split: pushes to main build a debug APK (no secrets); version tags (v*) or manual runs build a SIGNED release AAB with monotonic build number
+- [x] Release safety checks in CI (warns on test ads / test AdMob app ID / example.com placeholders; errors on placeholder ad unit with real ads on)
+- [x] Signing guide written (RELEASE_SIGNING.md) for both build.gradle.kts and build.gradle
+- [ ] Generate the upload keystore with keytool and BACK IT UP outside the repo
+- [ ] Add the signing block to android/app/build.gradle(.kts) after `flutter create` (snippet in RELEASE_SIGNING.md)
+- [ ] Add the 4 GitHub secrets (ANDROID_KEYSTORE_BASE64, _KEYSTORE_PASSWORD, _KEY_PASSWORD, _KEY_ALIAS)
+- [ ] Enroll in Play App Signing when creating the app in Play Console
 
 ## Store listing
 - [ ] App icon
