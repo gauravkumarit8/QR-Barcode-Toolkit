@@ -3,8 +3,23 @@ import 'screens/scan_screen.dart';
 import 'screens/generate_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/settings_service.dart';
 
-void main() {
+/// App-wide theme mode, set from persisted settings at startup and updated
+/// live by SettingsScreen. A plain ValueNotifier is enough here — no need
+/// for a full state-management package for one shared value.
+final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(ThemeMode.system);
+
+/// Whether Scan should auto-save each detected code to History. Loaded at
+/// startup, updated live by SettingsScreen, read (not listened to for
+/// rebuilds) by ScanScreen at detection time.
+final ValueNotifier<bool> autoSaveScansNotifier = ValueNotifier(true);
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final settings = SettingsService();
+  themeModeNotifier.value = await settings.getThemeMode();
+  autoSaveScansNotifier.value = await settings.getAutoSaveScans();
   runApp(const QrBarcodeToolkitApp());
 }
 
@@ -13,21 +28,26 @@ class QrBarcodeToolkitApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'QR & Barcode Toolkit',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.teal,
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.teal,
-        brightness: Brightness.dark,
-      ),
-      themeMode: ThemeMode.system,
-      home: const RootShell(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: 'QR & Barcode Toolkit',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.teal,
+            brightness: Brightness.light,
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.teal,
+            brightness: Brightness.dark,
+          ),
+          themeMode: themeMode,
+          home: const RootShell(),
+        );
+      },
     );
   }
 }
@@ -43,7 +63,6 @@ class _RootShellState extends State<RootShell> {
   int _currentIndex = 0;
 
   // Shared between History ("Re-generate") and Generate (consumes the value).
-  // Set by History, cleared by Generate once it has read the value.
   final ValueNotifier<String?> _regeneratePrefill = ValueNotifier(null);
 
   static const _titles = ['Scan', 'Generate', 'History'];

@@ -46,16 +46,18 @@ you build — check items off in your own Codespace and commit the change.
 - [x] Detail view (Copy / Open / Share / Delete) — functional
 - [x] "Re-generate" button — wired via a shared ValueNotifier held in RootShell;
       tapping it switches to the Generate tab with the value prefilled as Text type
+- [x] History refreshes automatically when items are added from Scan/Generate (change notifier in HistoryService)
 - [ ] Search bar
 
 ## Settings / Pro
 - [x] Basic screen shell
 - [ ] Pro purchase flow (Remove Ads, one-time IAP)
 - [ ] Restore purchases
-- [ ] Dark mode toggle wired to actual theme (currently follows system only)
-- [ ] Auto-save toggle persisted
-- [ ] Privacy Policy link (needs hosted GitHub Pages URL)
-- [ ] App version via package_info_plus
+- [x] Theme selector (System / Light / Dark) — persisted, applies live app-wide
+- [x] Auto-save toggle — persisted AND actually drives Scan behavior (auto-saves each detected code to History when on)
+- [ ] Privacy Policy link — tile is wired to open a URL, but it points at a placeholder (`example.com`); replace once the policy is hosted
+- [x] App version via package_info_plus
+- [x] Contact support row (mailto) — placeholder address `support@example.com` still needs replacing
 
 ## Monetization / Compliance
 - [ ] AdMob SDK initialized (ad_service.dart is a stub)

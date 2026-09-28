@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/history_item.dart';
 
@@ -7,6 +8,10 @@ import '../models/history_item.dart';
 /// offline-first / no-data-collected Play Store Data Safety declaration.
 class HistoryService {
   static const _prefsKey = 'history_items_v1';
+
+  /// Bumped after every add/delete/clear so screens (History tab) can refresh
+  /// even though they stay alive inside the bottom-nav IndexedStack.
+  static final ValueNotifier<int> changes = ValueNotifier(0);
 
   /// Free tier item cap — Pro removes this limit.
   /// TODO: check Pro status (via a future PurchaseService) before enforcing.
@@ -39,10 +44,12 @@ class HistoryService {
         _prefsKey,
         trimmed.map((i) => jsonEncode(i.toJson())).toList(),
       );
+      changes.value++;
       return;
     }
 
     await prefs.setStringList(_prefsKey, raw);
+    changes.value++;
   }
 
   Future<void> delete(String id) async {
@@ -53,10 +60,12 @@ class HistoryService {
       return item.id != id;
     }).toList();
     await prefs.setStringList(_prefsKey, filtered);
+    changes.value++;
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefsKey);
+    changes.value++;
   }
 }

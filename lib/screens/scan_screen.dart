@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../main.dart' show autoSaveScansNotifier;
 import '../models/history_item.dart';
 import '../services/history_service.dart';
 
@@ -87,6 +88,9 @@ class _ScanScreenState extends State<ScanScreen> {
         _lastScanValue = barcodes.first.rawValue;
         _savedToHistory = false;
       });
+      if (autoSaveScansNotifier.value) {
+        _saveToHistory();
+      }
     }
   }
 
