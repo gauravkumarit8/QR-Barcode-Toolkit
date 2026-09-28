@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/history_item.dart';
+import 'pro_service.dart';
 
 /// Persists scan/generate history locally (SharedPreferences-backed).
 /// No network calls — everything stays on-device, matching the app's
@@ -14,7 +15,7 @@ class HistoryService {
   static final ValueNotifier<int> changes = ValueNotifier(0);
 
   /// Free tier item cap — Pro removes this limit.
-  /// TODO: check Pro status (via a future PurchaseService) before enforcing.
+  /// Not enforced for Pro users.
   static const int freeTierLimit = 50;
 
   Future<List<HistoryItem>> getAll() async {
@@ -34,7 +35,7 @@ class HistoryService {
     raw.add(jsonEncode(item.toJson()));
 
     // Enforce free-tier cap by dropping the oldest entries once over limit.
-    if (raw.length > freeTierLimit) {
+    if (!ProService.isPro.value && raw.length > freeTierLimit) {
       final items = raw
           .map((s) => HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>))
           .toList()

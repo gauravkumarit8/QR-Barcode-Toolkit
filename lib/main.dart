@@ -3,7 +3,10 @@ import 'screens/scan_screen.dart';
 import 'screens/generate_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/ad_service.dart';
+import 'services/pro_service.dart';
 import 'services/settings_service.dart';
+import 'widgets/banner_ad_widget.dart';
 
 /// App-wide theme mode, set from persisted settings at startup and updated
 /// live by SettingsScreen. A plain ValueNotifier is enough here — no need
@@ -20,6 +23,7 @@ void main() async {
   final settings = SettingsService();
   themeModeNotifier.value = await settings.getThemeMode();
   autoSaveScansNotifier.value = await settings.getAutoSaveScans();
+  await ProService.load();
   runApp(const QrBarcodeToolkitApp());
 }
 
@@ -79,6 +83,16 @@ class _RootShellState extends State<RootShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Consent form needs a visible Activity, so start after the first frame.
+    // Skipped entirely for Pro users (no ads, so no consent needed).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!ProService.isPro.value) AdService.init();
+    });
+  }
+
+  @override
   void dispose() {
     _regeneratePrefill.dispose();
     super.dispose();
@@ -100,9 +114,16 @@ class _RootShellState extends State<RootShell> {
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Column(
+        children: [
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
+          ),
+          const BannerAdWidget(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

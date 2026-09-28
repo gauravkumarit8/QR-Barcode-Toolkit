@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../main.dart' show themeModeNotifier, autoSaveScansNotifier;
+import '../services/ad_service.dart';
+import '../services/pro_service.dart';
 import '../services/settings_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -16,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _autoSave = true;
   String _version = '';
+  bool _showPrivacyOptions = false;
   bool _loaded = false;
 
   @override
@@ -27,9 +30,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final autoSave = await _settingsService.getAutoSaveScans();
     final info = await PackageInfo.fromPlatform();
+    final privacyRequired =
+        ProService.isPro.value ? false : await AdService.privacyOptionsRequired();
     if (!mounted) return;
     setState(() {
       _autoSave = autoSave;
+      _showPrivacyOptions = privacyRequired;
       _version = '${info.version} (${info.buildNumber})';
       _loaded = true;
     });
@@ -80,6 +86,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const Divider(),
+                if (_showPrivacyOptions)
+                  ListTile(
+                    title: const Text('Ad privacy settings'),
+                    subtitle: const Text('Review or change your ad consent choice'),
+                    onTap: AdService.showPrivacyOptions,
+                  ),
                 ListTile(
                   title: const Text('Privacy Policy'),
                   trailing: const Icon(Icons.open_in_new, size: 18),

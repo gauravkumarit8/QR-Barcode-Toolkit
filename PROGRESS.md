@@ -51,7 +51,7 @@ you build — check items off in your own Codespace and commit the change.
 
 ## Settings / Pro
 - [x] Basic screen shell
-- [ ] Pro purchase flow (Remove Ads, one-time IAP)
+- [ ] Pro purchase flow (Remove Ads, one-time IAP) — should call ProService.setPro(true)
 - [ ] Restore purchases
 - [x] Theme selector (System / Light / Dark) — persisted, applies live app-wide
 - [x] Auto-save toggle — persisted AND actually drives Scan behavior (auto-saves each detected code to History when on)
@@ -60,9 +60,13 @@ you build — check items off in your own Codespace and commit the change.
 - [x] Contact support row (mailto) — placeholder address `support@example.com` still needs replacing
 
 ## Monetization / Compliance
-- [ ] AdMob SDK initialized (ad_service.dart is a stub)
-- [ ] UMP consent flow implemented and gating ad requests
-- [ ] Banner ad placements added to Scan/Generate/History (hidden after Pro purchase)
+- [x] AdMob SDK initialized only AFTER consent resolves (ad_service.dart) — uses Google TEST ad IDs
+- [x] UMP consent flow implemented and gating ad requests (form shown only where required)
+- [x] "Ad privacy settings" row in Settings, shown only where the region requires it
+- [x] Single banner above the bottom nav on all 3 tabs; hidden for Pro, hidden until loaded, padded to reduce accidental taps
+- [x] Pro flag (ProService) hides ads and lifts the 50-item history cap — purchase flow itself still TODO
+- [ ] AndroidManifest edits (see ANDROID_SETUP.md — AdMob App ID is REQUIRED or app crashes on launch)
+- [ ] Create real AdMob account, real app ID + banner unit ID, then set AdService.useTestAds = false
 - [ ] Data Safety form filled in Play Console, matches actual permissions/SDKs
 - [ ] Privacy Policy drafted and hosted
 - [x] Scoped storage confirmed — Save PNG goes through image_gallery_saver /
