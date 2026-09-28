@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../main.dart' show themeModeNotifier, autoSaveScansNotifier;
 import '../services/ad_service.dart';
 import '../services/pro_service.dart';
+import '../services/purchase_service.dart';
 import '../services/settings_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -25,6 +26,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _load();
+    PurchaseService.loadProduct();
+    PurchaseService.message.addListener(_showPurchaseMessage);
+  }
+
+  @override
+  void dispose() {
+    PurchaseService.message.removeListener(_showPurchaseMessage);
+    super.dispose();
+  }
+
+  void _showPurchaseMessage() {
+    final msg = PurchaseService.message.value;
+    if (msg == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    PurchaseService.message.value = null;
   }
 
   Future<void> _load() async {
@@ -49,9 +65,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                const ListTile(
-                  title: Text('Pro'),
-                  subtitle: Text('Remove Ads · Unlimited History · Custom Colors (coming soon)'),
+                ListenableBuilder(
+                  listenable: Listenable.merge([
+                    ProService.isPro,
+                    PurchaseService.product,
+                    PurchaseService.busy,
+                  ]),
+                  builder: (context, _) {
+                    if (ProService.isPro.value) {
+                      return const ListTile(
+                        leading: Icon(Icons.verified_outlined),
+                        title: Text('Pro unlocked'),
+                        subtitle: Text('Ads removed · Unlimited history'),
+                      );
+                    }
+                    final product = PurchaseService.product.value;
+                    final busy = PurchaseService.busy.value;
+                    return Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.workspace_premium_outlined),
+                          title: const Text('Upgrade to Pro'),
+                          subtitle: const Text('One-time purchase · Remove ads · Unlimited history'),
+                          trailing: FilledButton(
+                            onPressed: (product == null || busy) ? null : PurchaseService.buyPro,
+                            child: Text(busy ? '…' : (product?.price ?? 'Unavailable')),
+                          ),
+                        ),
+                        ListTile(
+                          title: const Text('Restore purchases'),
+                          subtitle: const Text('Already bought Pro? Re-activate it here'),
+                          onTap: busy ? null : PurchaseService.restore,
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const Divider(),
                 ValueListenableBuilder<ThemeMode>(

@@ -5,6 +5,7 @@ import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/ad_service.dart';
 import 'services/pro_service.dart';
+import 'services/purchase_service.dart';
 import 'services/settings_service.dart';
 import 'widgets/banner_ad_widget.dart';
 
@@ -24,6 +25,7 @@ void main() async {
   themeModeNotifier.value = await settings.getThemeMode();
   autoSaveScansNotifier.value = await settings.getAutoSaveScans();
   await ProService.load();
+  PurchaseService.init();
   runApp(const QrBarcodeToolkitApp());
 }
 

@@ -36,6 +36,9 @@ dependencies:
   # Opening scanned links safely
   url_launcher: ^6.3.0
 
+  # One-time Pro purchase (Google Play Billing)
+  in_app_purchase: ^3.2.0
+
   # App version display in Settings
   package_info_plus: ^8.0.0
 

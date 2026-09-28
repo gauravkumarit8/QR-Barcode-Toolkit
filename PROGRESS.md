@@ -51,8 +51,10 @@ you build — check items off in your own Codespace and commit the change.
 
 ## Settings / Pro
 - [x] Basic screen shell
-- [ ] Pro purchase flow (Remove Ads, one-time IAP) — should call ProService.setPro(true)
-- [ ] Restore purchases
+- [x] Pro purchase flow — one-time non-consumable `pro_unlock` via in_app_purchase, price shown from Play, calls ProService.setPro(true)
+- [x] Restore purchases (with a "nothing found" message)
+- [ ] Create the `pro_unlock` product in Play Console + license testers (see PLAY_CONSOLE_SETUP.md)
+- [ ] Pro extras promised in the original spec (custom colors, logo, SVG/HD export) — NOT built; don't advertise them until they are
 - [x] Theme selector (System / Light / Dark) — persisted, applies live app-wide
 - [x] Auto-save toggle — persisted AND actually drives Scan behavior (auto-saves each detected code to History when on)
 - [ ] Privacy Policy link — tile is wired to open a URL, but it points at a placeholder (`example.com`); replace once the policy is hosted
