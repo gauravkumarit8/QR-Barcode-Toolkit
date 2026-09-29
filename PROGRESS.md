@@ -14,12 +14,14 @@ you build — check items off in your own Codespace and commit the change.
 ## Scan tab
 - [x] Camera permission gated behind in-app rationale dialog (not requested on launch)
 - [x] MobileScanner wired up, detects + shows raw value
-- [x] Scan frame overlay (simple bordered box; corner-marker styling still TODO)
+- [x] Scan frame overlay with real corner markers (CustomPainter, not a plain rectangle)
 - [x] Result card actions: Copy / Open / Share / Save to History — all functional
 - [x] Torch toggle, auto-detect switch, flip camera button — wired to MobileScannerController
-- [ ] Phishing/malicious URL warning before opening scanned links (currently just a
-      generic "open this link?" confirmation — no actual safety check yet)
-- [ ] Scan frame corner markers (currently a plain rounded rectangle)
+- [x] Heuristic link warning before opening (lib/utils/link_safety.dart) — flags URL
+      shorteners, raw IP-address hosts, punycode/lookalike domains, and userinfo@host
+      disguise tricks; shown as a red banner in the Open confirmation, button becomes
+      "Open anyway". This is NOT a real reputation/phishing check (no network call
+      by design) — it only catches a few common red flags on-device.
 
 ## Generate tab
 - [x] Type selector chips (v1 trimmed to Text / URL / WiFi / Phone / Barcode)
@@ -45,7 +47,8 @@ you build — check items off in your own Codespace and commit the change.
 - [x] "Re-generate" button — wired via a shared ValueNotifier held in RootShell;
       tapping it switches to the Generate tab with the value prefilled as Text type
 - [x] History refreshes automatically when items are added from Scan/Generate (change notifier in HistoryService)
-- [ ] Search bar
+- [x] Search bar — inline field at the top of History; filters by content, or by the words "scanned" / "generated"; "no matches" state
+- [x] Fixed swipe-to-delete: row is removed from the list synchronously (a Dismissible left in the tree throws in debug)
 
 ## Settings / Pro
 - [x] Basic screen shell

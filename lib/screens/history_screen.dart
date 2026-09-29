@@ -16,28 +16,36 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final _historyService = HistoryService();
-  late Future<List<HistoryItem>> _future;
+  final _searchController = TextEditingController();
+
+  List<HistoryItem>? _items; // null until first load
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _future = _historyService.getAll();
-    HistoryService.changes.addListener(_refresh);
+    _load();
+    HistoryService.changes.addListener(_load);
   }
 
   @override
   void dispose() {
-    HistoryService.changes.removeListener(_refresh);
+    HistoryService.changes.removeListener(_load);
+    _searchController.dispose();
     super.dispose();
   }
 
-  void _refresh() {
-    setState(() => _future = _historyService.getAll());
+  Future<void> _load() async {
+    final items = await _historyService.getAll();
+    if (!mounted) return;
+    setState(() => _items = items);
   }
 
   Future<void> _delete(String id) async {
+    // Remove from the visible list synchronously: a swiped Dismissible must
+    // be gone from the tree by the end of the frame or Flutter asserts.
+    setState(() => _items?.removeWhere((i) => i.id == id));
     await _historyService.delete(id);
-    _refresh();
   }
 
   void _openDetail(HistoryItem item) {
@@ -58,47 +66,99 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  /// Case-insensitive match on the content, or on the words "scan" /
+  /// "generate" (so you can list only scanned or only generated items).
+  List<HistoryItem> _filtered(List<HistoryItem> items) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items
+        .where((i) =>
+            i.value.toLowerCase().contains(q) ||
+            (i.type == 'scan' ? 'scanned' : 'generated').contains(q))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<HistoryItem>>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final items = snapshot.data!;
-        if (items.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No history yet. Scan or generate something!'),
+    final all = _items;
+    if (all == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (all.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No history yet. Scan or generate something!'),
+        ),
+      );
+    }
+
+    final items = _filtered(all);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: TextField(
+            controller: _searchController,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search history',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+              border: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(28)),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
             ),
-          );
-        }
-        return ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return Dismissible(
-              key: ValueKey(item.id),
-              direction: DismissDirection.endToStart,
-              background: Container(
-                color: Theme.of(context).colorScheme.errorContainer,
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 20),
-                child: const Icon(Icons.delete_outline),
-              ),
-              onDismissed: (_) => _delete(item.id),
-              child: ListTile(
-                leading: Icon(item.type == 'scan' ? Icons.qr_code_scanner : Icons.qr_code_2),
-                title: Text(item.value, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(_formatTimestamp(item.timestamp)),
-                onTap: () => _openDetail(item),
-              ),
-            );
-          },
-        );
-      },
+            onChanged: (value) => setState(() => _query = value),
+          ),
+        ),
+        Expanded(
+          child: items.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('No matches for "${_query.trim()}"'),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return Dismissible(
+                      key: ValueKey(item.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        child: const Icon(Icons.delete_outline),
+                      ),
+                      onDismissed: (_) => _delete(item.id),
+                      child: ListTile(
+                        leading: Icon(item.type == 'scan'
+                            ? Icons.qr_code_scanner
+                            : Icons.qr_code_2),
+                        title: Text(item.value,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(_formatTimestamp(item.timestamp)),
+                        onTap: () => _openDetail(item),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 

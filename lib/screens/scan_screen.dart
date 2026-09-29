@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../main.dart' show autoSaveScansNotifier;
 import '../models/history_item.dart';
 import '../services/history_service.dart';
+import '../utils/link_safety.dart';
 
 /// Scan tab.
 ///
@@ -110,12 +111,46 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (!looksLikeLink) return;
 
-    // TODO: replace with a real phishing/malicious-link check before opening.
+    final warning = LinkSafety.checkReason(uri);
+
     final proceed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Open this link?'),
-        content: Text(value, maxLines: 3, overflow: TextOverflow.ellipsis),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, maxLines: 3, overflow: TextOverflow.ellipsis),
+            if (warning != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        size: 18, color: Theme.of(context).colorScheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        warning,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -123,7 +158,11 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Open'),
+            style: warning != null
+                ? FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error)
+                : null,
+            child: Text(warning != null ? 'Open anyway' : 'Open'),
           ),
         ],
       ),
@@ -190,13 +229,10 @@ class _ScanScreenState extends State<ScanScreen> {
               MobileScanner(controller: _scannerController, onDetect: _onDetect),
               IgnorePointer(
                 child: Center(
-                  child: Container(
+                  child: SizedBox(
                     width: 220,
                     height: 220,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white70, width: 2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    child: CustomPaint(painter: _ScanFramePainter()),
                   ),
                 ),
               ),
@@ -263,6 +299,47 @@ class _ScanScreenState extends State<ScanScreen> {
       ],
     );
   }
+}
+
+/// Draws four L-shaped corner markers (the standard "scan frame" look)
+/// instead of a plain rectangle border.
+class _ScanFramePainter extends CustomPainter {
+  static const _cornerLength = 28.0;
+  static const _strokeWidth = 4.0;
+  static const _radius = 16.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = _strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    void corner(Offset origin, bool right, bool bottom) {
+      final dx = right ? -1.0 : 1.0;
+      final dy = bottom ? -1.0 : 1.0;
+      final path = Path()
+        ..moveTo(origin.dx, origin.dy + dy * _cornerLength)
+        ..lineTo(origin.dx, origin.dy + dy * _radius)
+        ..quadraticBezierTo(
+          origin.dx,
+          origin.dy,
+          origin.dx + dx * _radius,
+          origin.dy,
+        )
+        ..lineTo(origin.dx + dx * _cornerLength, origin.dy);
+      canvas.drawPath(path, paint);
+    }
+
+    corner(const Offset(0, 0), false, false);
+    corner(Offset(size.width, 0), true, false);
+    corner(Offset(0, size.height), false, true);
+    corner(Offset(size.width, size.height), true, true);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _ResultCard extends StatelessWidget {
