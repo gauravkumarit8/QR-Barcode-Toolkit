@@ -17,6 +17,7 @@ you build — check items off in your own Codespace and commit the change.
 - [x] Scan frame overlay with real corner markers (CustomPainter, not a plain rectangle)
 - [x] Result card actions: Copy / Open / Share / Save to History — all functional
 - [x] Torch toggle, auto-detect switch, flip camera button — wired to MobileScannerController
+- [x] Fixed: ML Kit barcode model wasn't bundled — added install-time dependency meta-data to AndroidManifest.xml + an 8s in-app hint if nothing's detected (needs internet once per device; sideloaded APKs still download on first Scan tab use, Play Store installs pre-fetch at install time)
 - [x] Heuristic link warning before opening (lib/utils/link_safety.dart) — flags URL
       shorteners, raw IP-address hosts, punycode/lookalike domains, and userinfo@host
       disguise tricks; shown as a red banner in the Open confirmation, button becomes
@@ -28,7 +29,7 @@ you build — check items off in your own Codespace and commit the change.
 - [x] Live QR preview via qr_flutter
 - [x] Save PNG — captures the preview via RepaintBoundary, saves through
       image_gallery_saver (MediaStore-backed, scoped storage compliant)
-- [x] Share — shares the generated PNG + text via share_plus
+- [x] Share — shares the generated PNG + text via share_plus; now waits for the frame to paint before capturing and tells the user explicitly if the image couldn't be attached (was silently falling back to text-only before)
 - [x] Save to History — functional
 - [x] Per-type input forms — Text, URL, Phone (tel: prefix), WiFi (SSID/password/
       encryption dropdown building a proper WIFI: string) all have their own fields now
@@ -58,7 +59,7 @@ you build — check items off in your own Codespace and commit the change.
 - [ ] Pro extras promised in the original spec (custom colors, logo, SVG/HD export) — NOT built; don't advertise them until they are
 - [x] Theme selector (System / Light / Dark) — persisted, applies live app-wide
 - [x] Auto-save toggle — persisted AND actually drives Scan behavior (auto-saves each detected code to History when on)
-- [ ] Privacy Policy link — tile is wired to open a URL, but it points at a placeholder (`example.com`); replace once the policy is hosted
+- [x] Privacy Policy link — now points at a named placeholder (YOUR_GITHUB_USERNAME...) instead of example.com; real policy drafted at docs/privacy-policy.html, hosting steps in docs/HOSTING.md — fill 3 placeholders in the HTML, enable GitHub Pages, then update the URL constant in settings_screen.dart
 - [x] App version via package_info_plus
 - [x] Contact support row (mailto) — placeholder address `support@example.com` still needs replacing
 
@@ -68,10 +69,12 @@ you build — check items off in your own Codespace and commit the change.
 - [x] "Ad privacy settings" row in Settings, shown only where the region requires it
 - [x] Single banner above the bottom nav on all 3 tabs; hidden for Pro, hidden until loaded, padded to reduce accidental taps
 - [x] Pro flag (ProService) hides ads and lifts the 50-item history cap — purchase flow itself still TODO
-- [ ] AndroidManifest edits (see ANDROID_SETUP.md — AdMob App ID is REQUIRED or app crashes on launch)
+- [x] AndroidManifest.xml provided directly in the scaffold (android/app/src/main/AndroidManifest.xml) — includes the AdMob App ID, camera permission + feature flag, INTERNET, and url_launcher package-visibility queries for Android 11+
 - [ ] Create real AdMob account, real app ID + banner unit ID, then set AdService.useTestAds = false
+- [x] Fixed: DropdownButtonFormField used `initialValue` (wrong, compile error) — corrected to `value` in Generate screen's WiFi encryption + barcode format dropdowns
+- [x] Fixed: swapped `image_gallery_saver` (unmaintained, no Android namespace → fails Gradle build on AGP 8+) for `gal` (maintained, scoped-storage compliant)
 - [ ] Data Safety form filled in Play Console, matches actual permissions/SDKs
-- [ ] Privacy Policy drafted and hosted
+- [x] Privacy Policy drafted (docs/privacy-policy.html) — accurate to actual data handling (camera local-only, AdMob + UMP consent, Play Billing, local-only history). Hosting is a 5-minute manual step (docs/HOSTING.md), not yet done
 - [x] Scoped storage confirmed — Save PNG goes through image_gallery_saver /
       MediaStore, no broad WRITE_EXTERNAL_STORAGE requested
 - [ ] Target SDK / API level pinned to current Play requirement
@@ -90,3 +93,36 @@ you build — check items off in your own Codespace and commit the change.
 - [ ] Screenshots
 - [ ] Store listing copy + keywords
 - [ ] Privacy Policy URL added to Play Console listing
+
+## Lessons from competitor review research
+
+Sourced from real reviews on two popular Play Store QR/barcode scanner apps
+(DOSA Apps' "QR scanner - Barcode reader", 10M+ downloads; Simple Design's
+"QR Scanner: Barcode Scanner", 100M+ downloads). Each item below is a
+complaint found in their actual reviews, with what it means for us.
+
+- **"Ads only, could not scan and proceed"** — our banner ad is structurally
+  separate from the Scan camera view (lives below the tab content in
+  main.dart's Column, never inside ScanScreen's Stack) — this failure mode
+  isn't architecturally possible here. No change needed, but worth knowing
+  why it's safe.
+- **App too slow to load when scanning under time pressure** (reviewer
+  described missing a discount code at checkout) — worth testing our actual
+  cold-start-to-first-detection time on a real device once building works;
+  not yet measured.
+- **[x] Ad overlapping the scan box / ad button same color + bigger than
+  real buttons, described as "deceitful"** — added an explicit small "Advertisement"
+  label above the banner (banner_ad_widget.dart). Structurally the ad was
+  already isolated from any button; the label adds clarity on top of that.
+- **[x] Scanned something, got nothing useful, had to search elsewhere** —
+  added a "Search online" action on non-URL scan results (opens a browser
+  search for the scanned text). Opt-in, only fires on tap, so it doesn't
+  compromise offline-first — no network call unless the user asks for one.
+- **[ ] Ad impersonating a subscription / "predatory free trial" charge**
+  (likely a 3rd-party ad creative, not the app's own pricing, but the app
+  still absorbed the bad reviews) — mitigation documented in
+  PLAY_CONSOLE_SETUP.md: restrict AdMob's max ad content rating + blocking
+  controls. Can't eliminate this risk, only reduce it.
+- **[x] "Report an ad" path in-app** — added to Settings, separate from
+  general "Contact support", with a pre-filled mailto subject/body prompting
+  for a description/screenshot.

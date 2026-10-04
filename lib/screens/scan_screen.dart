@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -30,6 +31,13 @@ class _ScanScreenState extends State<ScanScreen> {
   String? _lastScanValue;
   bool _savedToHistory = false;
 
+  // ML Kit's barcode model downloads via Google Play services the first
+  // time it's used on a device (not bundled in the APK). If that download
+  // hasn't finished, detection silently returns nothing. This timer tells
+  // the user why instead of leaving them wondering, instead of staying silent.
+  Timer? _slowDetectTimer;
+  bool _shownSlowHint = false;
+
   Future<void> _requestCameraPermission() async {
     final granted = await showDialog<bool>(
       context: context,
@@ -56,6 +64,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     final status = await Permission.camera.request();
     setState(() => _permissionGranted = status.isGranted);
+    if (status.isGranted) _startSlowDetectTimer();
 
     if (status.isPermanentlyDenied && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,20 +80,43 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     Permission.camera.status.then((status) {
-      if (mounted) setState(() => _permissionGranted = status.isGranted);
+      if (mounted) {
+        setState(() => _permissionGranted = status.isGranted);
+        if (status.isGranted) _startSlowDetectTimer();
+      }
     });
   }
 
   @override
   void dispose() {
+    _slowDetectTimer?.cancel();
     _scannerController.dispose();
     super.dispose();
+  }
+
+  void _startSlowDetectTimer() {
+    _slowDetectTimer?.cancel();
+    _slowDetectTimer = Timer(const Duration(seconds: 8), () {
+      if (!mounted || _lastScanValue != null || _shownSlowHint) return;
+      _shownSlowHint = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          duration: Duration(seconds: 8),
+          content: Text(
+            'Not detecting anything? The scanner needs internet the first '
+            'time it\'s used on a new phone to finish one-time setup. '
+            'Connect to WiFi/data and try again.',
+          ),
+        ),
+      );
+    });
   }
 
   void _onDetect(BarcodeCapture capture) {
     if (!_autoDetect || _lastScanValue != null) return;
     final barcodes = capture.barcodes;
     if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
+      _slowDetectTimer?.cancel();
       setState(() {
         _lastScanValue = barcodes.first.rawValue;
         _savedToHistory = false;
@@ -175,6 +207,18 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> _share() async {
     await Share.share(_lastScanValue!);
+  }
+
+  /// Opens a web search for the scanned text. Addresses a common complaint
+  /// on competitor scanner apps: scanning a product barcode or unfamiliar
+  /// code and getting nothing useful back. This stays opt-in (only runs on
+  /// a tap) and uses the device's own browser, so it doesn't compromise the
+  /// app's offline-first design — no network call happens unless the user
+  /// explicitly asks for one.
+  Future<void> _searchOnline() async {
+    final query = Uri.encodeComponent(_lastScanValue!);
+    final uri = Uri.parse('https://www.google.com/search?q=$query');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _saveToHistory() async {
@@ -287,6 +331,7 @@ class _ScanScreenState extends State<ScanScreen> {
                   savedToHistory: _savedToHistory,
                   onCopy: _copy,
                   onOpen: _isUrl ? _open : null,
+                  onSearchOnline: _isUrl ? null : _searchOnline,
                   onShare: _share,
                   onSave: _savedToHistory ? null : _saveToHistory,
                   onScanAgain: () => setState(() {
@@ -348,6 +393,7 @@ class _ResultCard extends StatelessWidget {
   final bool savedToHistory;
   final VoidCallback onCopy;
   final VoidCallback? onOpen;
+  final VoidCallback? onSearchOnline;
   final VoidCallback onShare;
   final VoidCallback? onSave;
   final VoidCallback onScanAgain;
@@ -358,6 +404,7 @@ class _ResultCard extends StatelessWidget {
     required this.savedToHistory,
     required this.onCopy,
     required this.onOpen,
+    required this.onSearchOnline,
     required this.onShare,
     required this.onSave,
     required this.onScanAgain,
@@ -381,6 +428,8 @@ class _ResultCard extends StatelessWidget {
                 children: [
                   TextButton(onPressed: onCopy, child: const Text('Copy')),
                   if (isUrl) TextButton(onPressed: onOpen, child: const Text('Open')),
+                  if (onSearchOnline != null)
+                    TextButton(onPressed: onSearchOnline, child: const Text('Search online')),
                   TextButton(onPressed: onShare, child: const Text('Share')),
                   TextButton(
                     onPressed: onSave,

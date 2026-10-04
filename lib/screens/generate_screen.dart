@@ -72,9 +72,12 @@ class _GenerateScreenState extends State<GenerateScreen> {
       _selected = _GenType.text;
       _textController.text = value;
     });
+    // Consume it so switching tabs away and back doesn't re-trigger this.
     widget.regeneratePrefill.value = null;
   }
 
+  /// The literal string encoded into the QR code (not used for barcode type,
+  /// which renders from _barcodeValueController directly).
   String get _qrData {
     switch (_selected) {
       case _GenType.text:
@@ -110,13 +113,26 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<Uint8List?> _capturePreviewPng() async {
     try {
+      // Ensure the preview has actually painted this frame before capturing —
+      // calling toImage() immediately after a setState can occasionally grab
+      // a stale/blank frame, which otherwise fails silently.
+      await WidgetsBinding.instance.endOfFrame;
       final boundary =
           _previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return null;
+      if (boundary == null) {
+        debugPrint('QR capture: no RenderRepaintBoundary found at preview key');
+        return null;
+      }
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      return byteData?.buffer.asUint8List();
-    } catch (_) {
+      final bytes = byteData?.buffer.asUint8List();
+      if (bytes == null || bytes.isEmpty) {
+        debugPrint('QR capture: toByteData returned null/empty');
+        return null;
+      }
+      return bytes;
+    } catch (e) {
+      debugPrint('QR capture failed: $e');
       return null;
     }
   }
@@ -135,6 +151,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
       return;
     }
 
+    // Uses MediaStore under the hood on Android 10+ (scoped storage) —
+    // no broad WRITE_EXTERNAL_STORAGE permission required.
     var ok = true;
     try {
       await Gal.putImageBytes(
@@ -157,6 +175,11 @@ class _GenerateScreenState extends State<GenerateScreen> {
     final bytes = await _capturePreviewPng();
     final shareText = _selected == _GenType.barcode ? _barcodeValueController.text : _qrData;
     if (bytes == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not attach the image — sharing text only')),
+        );
+      }
       await Share.share(shareText);
       return;
     }
@@ -251,6 +274,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
               ),
             ],
           ),
+          // TODO: banner ad (free tier only)
+          // TODO: Size/margin sliders, color picker + logo (Pro-gated, v2)
         ],
       ),
     );

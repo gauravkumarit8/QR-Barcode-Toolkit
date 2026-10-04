@@ -3,6 +3,9 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ad_service.dart';
 import '../services/pro_service.dart';
 
+/// Single banner shown above the bottom navigation on every tab.
+/// Renders nothing for Pro users, before consent is resolved, or if the ad
+/// fails to load — so it never leaves an empty gap or blocks the UI.
 class BannerAdWidget extends StatefulWidget {
   const BannerAdWidget({super.key});
 
@@ -77,6 +80,11 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     if (ad == null || !_loaded || ProService.isPro.value) {
       return const SizedBox.shrink();
     }
+    // Padding keeps the ad clear of the content above and the nav bar below,
+    // reducing accidental taps (a Play/AdMob policy concern). It also lives
+    // in its own row here — structurally separate from any screen's buttons
+    // or camera view — specifically because competitor app reviews describe
+    // ads overlapping the scan frame or styled to look like real buttons.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(

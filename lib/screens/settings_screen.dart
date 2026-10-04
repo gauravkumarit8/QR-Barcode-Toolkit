@@ -7,6 +7,13 @@ import '../services/pro_service.dart';
 import '../services/purchase_service.dart';
 import '../services/settings_service.dart';
 
+// TODO: fill these in once docs/privacy-policy.html is hosted (see
+// docs/HOSTING.md) and you have a real support inbox. Replace, then delete
+// this comment block.
+const _privacyPolicyUrl =
+    'https://YOUR_GITHUB_USERNAME.github.io/QR-Barcode-Toolkit/privacy-policy.html';
+const _supportEmail = 'YOUR_SUPPORT_EMAIL@example.com';
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -144,10 +151,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Privacy Policy'),
                   trailing: const Icon(Icons.open_in_new, size: 18),
                   onTap: () async {
-                    // TODO: replace with the real hosted GitHub Pages URL once
-                    // the policy is published (see PROGRESS.md).
-                    const url = 'https://example.com/qr-barcode-toolkit-privacy';
-                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    await launchUrl(Uri.parse(_privacyPolicyUrl),
+                        mode: LaunchMode.externalApplication);
                   },
                 ),
                 ListTile(
@@ -158,8 +163,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Contact support'),
                   trailing: const Icon(Icons.email_outlined, size: 18),
                   onTap: () async {
-                    // TODO: replace with the real support email address.
-                    final uri = Uri(scheme: 'mailto', path: 'support@example.com');
+                    final uri = Uri(
+                      scheme: 'mailto',
+                      path: _supportEmail,
+                      query: 'subject=${Uri.encodeComponent('QR Barcode Toolkit — Support')}',
+                    );
+                    await launchUrl(uri);
+                  },
+                ),
+                ListTile(
+                  title: const Text('Report an ad'),
+                  subtitle: const Text('Seen a misleading or inappropriate ad? Tell us'),
+                  trailing: const Icon(Icons.flag_outlined, size: 18),
+                  onTap: () async {
+                    final uri = Uri(
+                      scheme: 'mailto',
+                      path: _supportEmail,
+                      query: 'subject=${Uri.encodeComponent('Ad report — QR Barcode Toolkit')}'
+                          '&body=${Uri.encodeComponent('Please describe the ad you saw (and a screenshot if possible):\n\n')}',
+                    );
                     await launchUrl(uri);
                   },
                 ),

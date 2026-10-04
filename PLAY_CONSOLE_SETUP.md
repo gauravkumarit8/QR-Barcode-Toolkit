@@ -20,3 +20,23 @@ The app code expects one product. Nothing works until it exists in Play Console.
 Also decide your Pro copy honestly: the Settings text only promises what is
 implemented today (ads removed, unlimited history). Don't advertise custom
 colors / logo / SVG export in the store listing until they exist.
+
+## Restrict ad content (do this — real complaint on competitor apps)
+
+Reviews on both reference scanner apps describe ads that looked like a
+real subscription offer or app button, leading to confused/angry users and
+unexpected charges — almost certainly a third-party ad creative, not
+something the app itself built, but the app still took the reputational
+damage. AdMob lets you reduce this risk directly:
+
+1. AdMob console → **Settings → Content settings** (or **Ad content rating**)
+2. Set **maximum ad content rating** to the lowest tier (e.g. "G" / family
+   content) — this blocks the more aggressive and scam-adjacent ad creatives
+   that tend to cluster in higher-tolerance tiers.
+3. AdMob console → **Blocking controls** → review and block categories like
+   "Dating" or anything subscription/trial-trap adjacent if they appear.
+4. If a bad ad does get reported (Settings → Feedback in-app, once that
+   exists — see PROGRESS.md), block its advertiser from Blocking controls.
+
+This doesn't eliminate the risk, but it's the main lever available and
+costs nothing to set up.
