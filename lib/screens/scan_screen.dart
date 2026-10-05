@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
@@ -29,6 +30,7 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _torchOn = false;
   bool _autoDetect = true;
   String? _lastScanValue;
+  BarcodeFormat? _lastScanFormat;
   bool _savedToHistory = false;
 
   // ML Kit's barcode model downloads via Google Play services the first
@@ -37,6 +39,16 @@ class _ScanScreenState extends State<ScanScreen> {
   // the user why instead of leaving them wondering, instead of staying silent.
   Timer? _slowDetectTimer;
   bool _shownSlowHint = false;
+
+  // Zoom: mobile_scanner's scale is 0.0 (min) to 1.0 (max). Pinch gesture
+  // gives direct manual control; the auto-nudge timer gradually zooms in on
+  // its own if nothing's been detected for a few seconds, specifically to
+  // help with small or far-away codes the camera can't resolve at 1x.
+  double _zoomScale = 0.0;
+  double _pinchStartZoom = 0.0;
+  Timer? _autoZoomTimer;
+  static const _maxAutoZoom = 0.6; // cap auto-nudge below full zoom
+  static const _autoZoomStep = 0.15;
 
   Future<void> _requestCameraPermission() async {
     final granted = await showDialog<bool>(
@@ -90,6 +102,7 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   void dispose() {
     _slowDetectTimer?.cancel();
+    _autoZoomTimer?.cancel();
     _scannerController.dispose();
     super.dispose();
   }
@@ -110,6 +123,32 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       );
     });
+    _startAutoZoom();
+  }
+
+  /// Every 3s with no successful detection, nudge zoom in a bit further —
+  /// helps catch small or far-away codes without the user having to
+  /// manually pinch. Stops nudging once it hits _maxAutoZoom or a code is
+  /// found. Resets to 1x on success / "Scan again" / re-entering the tab.
+  void _startAutoZoom() {
+    _autoZoomTimer?.cancel();
+    _autoZoomTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (!mounted || _lastScanValue != null) {
+        timer.cancel();
+        return;
+      }
+      if (_zoomScale >= _maxAutoZoom) return;
+      setState(() => _zoomScale = (_zoomScale + _autoZoomStep).clamp(0.0, _maxAutoZoom));
+      _scannerController.setZoomScale(_zoomScale);
+    });
+  }
+
+  void _resetZoom() {
+    _autoZoomTimer?.cancel();
+    if (_zoomScale != 0.0) {
+      setState(() => _zoomScale = 0.0);
+      _scannerController.setZoomScale(0.0);
+    }
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -117,13 +156,49 @@ class _ScanScreenState extends State<ScanScreen> {
     final barcodes = capture.barcodes;
     if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
       _slowDetectTimer?.cancel();
+      _autoZoomTimer?.cancel();
       setState(() {
         _lastScanValue = barcodes.first.rawValue;
+        _lastScanFormat = barcodes.first.format;
         _savedToHistory = false;
       });
       if (autoSaveScansNotifier.value) {
         _saveToHistory();
       }
+    }
+  }
+
+  /// Decodes a QR/barcode from an existing photo instead of the live
+  /// camera — the single most-requested feature gap versus competitor
+  /// scanner apps. Uses the system photo picker (no storage permission
+  /// needed on modern Android via image_picker's built-in Photo Picker
+  /// support).
+  Future<void> _pickFromGallery() async {
+    final XFile? file =
+        await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (file == null || !mounted) return;
+
+    final capture = await _scannerController.analyzeImage(file.path);
+    final barcodes = capture?.barcodes ?? const [];
+
+    if (barcodes.isEmpty || barcodes.first.rawValue == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No QR code or barcode found in that image')),
+        );
+      }
+      return;
+    }
+
+    _slowDetectTimer?.cancel();
+    _autoZoomTimer?.cancel();
+    setState(() {
+      _lastScanValue = barcodes.first.rawValue;
+      _lastScanFormat = barcodes.first.format;
+      _savedToHistory = false;
+    });
+    if (autoSaveScansNotifier.value) {
+      _saveToHistory();
     }
   }
 
@@ -221,6 +296,30 @@ class _ScanScreenState extends State<ScanScreen> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  /// True for retail product barcode formats (EAN-13/8, UPC-A/E) whose
+  /// value is purely numeric — i.e. a real product code, not a QR-encoded
+  /// piece of text that happens to use one of these formats. Matches
+  /// competitor apps' "price scanner" feature at the level achievable
+  /// without a backend: a direct link to Google Shopping results for the
+  /// code, rather than an in-app price API (which would need a paid data
+  /// source and break offline-first for a core flow).
+  bool get _isProductBarcode {
+    final format = _lastScanFormat;
+    final value = _lastScanValue;
+    if (format == null || value == null) return false;
+    final isProductFormat = format == BarcodeFormat.ean13 ||
+        format == BarcodeFormat.ean8 ||
+        format == BarcodeFormat.upcA ||
+        format == BarcodeFormat.upcE;
+    return isProductFormat && RegExp(r'^\d+$').hasMatch(value);
+  }
+
+  Future<void> _comparePrices() async {
+    final query = Uri.encodeComponent(_lastScanValue!);
+    final uri = Uri.parse('https://www.google.com/search?tbm=shop&q=$query');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   Future<void> _saveToHistory() async {
     await _historyService.add(HistoryItem(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -267,30 +366,60 @@ class _ScanScreenState extends State<ScanScreen> {
       children: [
         Expanded(
           flex: 11,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              MobileScanner(controller: _scannerController, onDetect: _onDetect),
-              IgnorePointer(
-                child: Center(
-                  child: SizedBox(
-                    width: 220,
-                    height: 220,
-                    child: CustomPaint(painter: _ScanFramePainter()),
+          child: GestureDetector(
+            onScaleStart: (_) => _pinchStartZoom = _zoomScale,
+            onScaleUpdate: (details) {
+              // details.scale is relative to gesture start, so apply it on
+              // top of the zoom level recorded at onScaleStart rather than
+              // the current _zoomScale (which would compound every frame).
+              final next = (_pinchStartZoom + (details.scale - 1) * 0.5).clamp(0.0, 1.0);
+              _autoZoomTimer?.cancel(); // manual pinch overrides the auto-nudge
+              setState(() => _zoomScale = next);
+              _scannerController.setZoomScale(next);
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                MobileScanner(controller: _scannerController, onDetect: _onDetect),
+                IgnorePointer(
+                  child: Center(
+                    child: SizedBox(
+                      width: 220,
+                      height: 220,
+                      child: CustomPaint(painter: _ScanFramePainter()),
+                    ),
                   ),
                 ),
-              ),
-              Positioned(
-                bottom: 12,
-                left: 0,
-                right: 0,
-                child: Text(
-                  _lastScanValue == null ? 'Align QR or barcode within the frame' : '',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white),
+                if (_zoomScale > 0.01)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${(1 + _zoomScale * 4).toStringAsFixed(1)}x',
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  bottom: 12,
+                  left: 0,
+                  right: 0,
+                  child: Text(
+                    _lastScanValue == null ? 'Align QR or barcode within the frame' : '',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         Padding(
@@ -318,6 +447,11 @@ class _ScanScreenState extends State<ScanScreen> {
                 icon: const Icon(Icons.cameraswitch_outlined),
                 onPressed: () => _scannerController.switchCamera(),
               ),
+              IconButton(
+                icon: const Icon(Icons.photo_library_outlined),
+                tooltip: 'Scan from gallery',
+                onPressed: _pickFromGallery,
+              ),
             ],
           ),
         ),
@@ -331,13 +465,19 @@ class _ScanScreenState extends State<ScanScreen> {
                   savedToHistory: _savedToHistory,
                   onCopy: _copy,
                   onOpen: _isUrl ? _open : null,
-                  onSearchOnline: _isUrl ? null : _searchOnline,
+                  onSearchOnline: _isUrl ? null : (_isProductBarcode ? null : _searchOnline),
+                  onComparePrices: _isProductBarcode ? _comparePrices : null,
                   onShare: _share,
                   onSave: _savedToHistory ? null : _saveToHistory,
-                  onScanAgain: () => setState(() {
-                    _lastScanValue = null;
-                    _savedToHistory = false;
-                  }),
+                  onScanAgain: () {
+                    setState(() {
+                      _lastScanValue = null;
+                      _lastScanFormat = null;
+                      _savedToHistory = false;
+                    });
+                    _resetZoom();
+                    _startAutoZoom();
+                  },
                 ),
         ),
         // TODO: banner ad (free tier only) below results
@@ -394,6 +534,7 @@ class _ResultCard extends StatelessWidget {
   final VoidCallback onCopy;
   final VoidCallback? onOpen;
   final VoidCallback? onSearchOnline;
+  final VoidCallback? onComparePrices;
   final VoidCallback onShare;
   final VoidCallback? onSave;
   final VoidCallback onScanAgain;
@@ -405,6 +546,7 @@ class _ResultCard extends StatelessWidget {
     required this.onCopy,
     required this.onOpen,
     required this.onSearchOnline,
+    required this.onComparePrices,
     required this.onShare,
     required this.onSave,
     required this.onScanAgain,
@@ -430,6 +572,8 @@ class _ResultCard extends StatelessWidget {
                   if (isUrl) TextButton(onPressed: onOpen, child: const Text('Open')),
                   if (onSearchOnline != null)
                     TextButton(onPressed: onSearchOnline, child: const Text('Search online')),
+                  if (onComparePrices != null)
+                    TextButton(onPressed: onComparePrices, child: const Text('Compare prices')),
                   TextButton(onPressed: onShare, child: const Text('Share')),
                   TextButton(
                     onPressed: onSave,

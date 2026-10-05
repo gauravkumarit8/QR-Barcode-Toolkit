@@ -53,6 +53,18 @@ class HistoryService {
     changes.value++;
   }
 
+  Future<void> setFavorite(String id, bool favorite) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_prefsKey) ?? [];
+    final updated = raw.map((s) {
+      final item = HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>);
+      if (item.id != id) return s;
+      return jsonEncode(item.copyWith(favorite: favorite).toJson());
+    }).toList();
+    await prefs.setStringList(_prefsKey, updated);
+    changes.value++;
+  }
+
   Future<void> delete(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_prefsKey) ?? [];

@@ -126,3 +126,24 @@ complaint found in their actual reviews, with what it means for us.
 - **[x] "Report an ad" path in-app** — added to Settings, separate from
   general "Contact support", with a pre-filled mailto subject/body prompting
   for a description/screenshot.
+
+## Competitor gap-closing (from comparison doc)
+- [x] Scan from Gallery — new gallery icon in Scan tab's controls row, uses
+      image_picker + mobile_scanner's analyzeImage() on the picked file;
+      shows "no code found" if the image doesn't contain one. Reuses the
+      existing result card (Copy/Open/Share/Save) — no new UI needed there.
+- [x] Auto zoom — pinch-to-zoom gesture on the camera view (manual, instant)
+      PLUS an automatic nudge every 3s with no detection (steps up to 0.6 of
+      max zoom, resets on success/Scan again/re-entering tab). Small "Nx"
+      indicator shows current zoom. Digital zoom via mobile_scanner's
+      setZoomScale, not optical — same technique competitor apps use.
+- [x] Price comparison / product lookup — detects EAN-13/8, UPC-A/E barcodes
+      with numeric values and shows "Compare prices" (opens Google Shopping
+      search) instead of the generic "Search online" button for those.
+      No backend/API integration — stays offline-first, purely a browser
+      hand-off on tap.
+- [x] Favorites in History — star toggle on each row and in the detail
+      sheet (HistoryItem.favorite, HistoryService.setFavorite), plus an
+      All/Favorites filter chip row above the list. Old history items
+      without the field default to favorite:false on load (backward compatible).
+- [ ] vCard + Email generation (next gap to close)

@@ -20,6 +20,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   List<HistoryItem>? _items; // null until first load
   String _query = '';
+  bool _favoritesOnly = false;
 
   @override
   void initState() {
@@ -48,6 +49,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     await _historyService.delete(id);
   }
 
+  Future<void> _toggleFavorite(HistoryItem item) async {
+    // Optimistic local update so the star flips instantly; the service call
+    // below persists it and HistoryService.changes will reconcile anyway.
+    setState(() {
+      final idx = _items?.indexWhere((i) => i.id == item.id) ?? -1;
+      if (idx != -1) _items![idx] = item.copyWith(favorite: !item.favorite);
+    });
+    await _historyService.setFavorite(item.id, !item.favorite);
+  }
+
   void _openDetail(HistoryItem item) {
     showModalBottomSheet(
       context: context,
@@ -62,16 +73,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Navigator.pop(context);
           widget.onRegenerate(item.value);
         },
+        onToggleFavorite: () => _toggleFavorite(item),
       ),
     );
   }
 
   /// Case-insensitive match on the content, or on the words "scan" /
-  /// "generate" (so you can list only scanned or only generated items).
+  /// "generate" (so you can list only scanned or only generated items),
+  /// plus the favorites-only filter chip.
   List<HistoryItem> _filtered(List<HistoryItem> items) {
+    var result = items;
+    if (_favoritesOnly) {
+      result = result.where((i) => i.favorite).toList();
+    }
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return items;
-    return items
+    if (q.isEmpty) return result;
+    return result
         .where((i) =>
             i.value.toLowerCase().contains(q) ||
             (i.type == 'scan' ? 'scanned' : 'generated').contains(q))
@@ -123,12 +140,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onChanged: (value) => setState(() => _query = value),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: !_favoritesOnly,
+                onSelected: (_) => setState(() => _favoritesOnly = false),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                avatar: const Icon(Icons.star, size: 16),
+                label: const Text('Favorites'),
+                selected: _favoritesOnly,
+                onSelected: (_) => setState(() => _favoritesOnly = true),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: items.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('No matches for "${_query.trim()}"'),
+                    child: Text(_favoritesOnly && _query.isEmpty
+                        ? 'No favorites yet — tap the star on any item to save it here'
+                        : 'No matches for "${_query.trim()}"'),
                   ),
                 )
               : ListView.builder(
@@ -152,6 +190,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         title: Text(item.value,
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(_formatTimestamp(item.timestamp)),
+                        trailing: IconButton(
+                          icon: Icon(
+                            item.favorite ? Icons.star : Icons.star_border,
+                            color: item.favorite ? Colors.amber : null,
+                          ),
+                          tooltip: item.favorite ? 'Remove favorite' : 'Add favorite',
+                          onPressed: () => _toggleFavorite(item),
+                        ),
                         onTap: () => _openDetail(item),
                       ),
                     );
@@ -177,11 +223,13 @@ class _DetailSheet extends StatelessWidget {
   final HistoryItem item;
   final VoidCallback onDelete;
   final VoidCallback onRegenerate;
+  final VoidCallback onToggleFavorite;
 
   const _DetailSheet({
     required this.item,
     required this.onDelete,
     required this.onRegenerate,
+    required this.onToggleFavorite,
   });
 
   bool get _isUrl {
@@ -202,8 +250,21 @@ class _DetailSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SelectableText(item.value),
-          const SizedBox(height: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: SelectableText(item.value)),
+              IconButton(
+                icon: Icon(
+                  item.favorite ? Icons.star : Icons.star_border,
+                  color: item.favorite ? Colors.amber : null,
+                ),
+                tooltip: item.favorite ? 'Remove favorite' : 'Add favorite',
+                onPressed: onToggleFavorite,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
