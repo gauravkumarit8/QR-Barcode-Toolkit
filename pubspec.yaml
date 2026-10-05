@@ -13,6 +13,7 @@ dependencies:
 
   # Scanning
   mobile_scanner: ^5.2.3
+  image_picker: ^1.1.2
 
   # Generation
   qr_flutter: ^4.1.0
