@@ -112,7 +112,8 @@ elsewhere in the app)
   strictly for closed testing): not yet made — ask if you want one.
 
 ## 8. Privacy policy URL
-Paste the GitHub Pages URL from docs/HOSTING.md once hosted.
+https://gauravkumarit8.github.io/qr-barcode-toolkit/privacy-policy.html
+(hosted in the gauravkumarit8.github.io repo, subfolder /qr-barcode-toolkit/ — not this app's own docs/ folder)
 
 ## 9. Closed testing track setup
 - Create an email list or Google Group of testers (even just your own

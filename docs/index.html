@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>QR & Barcode Toolkit — Free Offline QR Code & Barcode Scanner App</title>
+<meta name="description" content="QR & Barcode Toolkit is a fast, offline QR code and barcode scanner and generator for Android. Scan, generate, and manage history with no account required. No ads interrupting your scan, one-time Pro upgrade, no subscription.">
+<link rel="canonical" href="https://gauravkumarit8.github.io/QR-Barcode-Toolkit/">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gauravkumarit8.github.io/QR-Barcode-Toolkit/">
+<meta property="og:title" content="QR & Barcode Toolkit — Free Offline QR Code & Barcode Scanner">
+<meta property="og:description" content="Fast, offline QR code and barcode scanner and generator for Android. Scan from camera or gallery, generate WiFi/URL/contact codes, auto zoom, favorites, and more — no account, no tracking.">
+<meta property="og:image" content="https://gauravkumarit8.github.io/QR-Barcode-Toolkit/assets/icon-512.png">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="QR & Barcode Toolkit — Free Offline QR Code & Barcode Scanner">
+<meta name="twitter:description" content="Fast, offline QR code and barcode scanner and generator for Android. No account, no tracking, one-time Pro upgrade.">
+<meta name="twitter:image" content="https://gauravkumarit8.github.io/QR-Barcode-Toolkit/assets/icon-512.png">
+
+<!-- Structured data for search engines -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "QR & Barcode Toolkit",
+  "operatingSystem": "ANDROID",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "Fast, offline QR code and barcode scanner and generator for Android. Scan from camera or gallery, generate WiFi/URL/contact codes, auto zoom, favorites, price comparison for product barcodes, and full scan/generate history. No account, no location tracking.",
+  "image": "https://gauravkumarit8.github.io/QR-Barcode-Toolkit/assets/icon-512.png",
+  "url": "https://gauravkumarit8.github.io/QR-Barcode-Toolkit/",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Gaurav"
+  }
+}
+</script>
+
+<style>
+  :root {
+    --teal: #00796b;
+    --teal-dark: #00695c;
+    --teal-light: #26a69a;
+    --bg: #fafafa;
+    --text: #212121;
+    --text-grey: #666;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.6;
+  }
+  header.hero {
+    background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+    color: white;
+    text-align: center;
+    padding: 56px 20px 64px;
+  }
+  header.hero img.icon {
+    width: 96px;
+    height: 96px;
+    border-radius: 22px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    margin-bottom: 20px;
+  }
+  header.hero h1 {
+    font-size: 1.9em;
+    margin: 0 0 12px;
+  }
+  header.hero p.tagline {
+    font-size: 1.1em;
+    max-width: 540px;
+    margin: 0 auto 28px;
+    opacity: 0.95;
+  }
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    color: var(--teal-dark);
+    font-weight: 600;
+    font-size: 1.05em;
+    padding: 14px 28px;
+    border-radius: 999px;
+    text-decoration: none;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    transition: transform 0.15s ease;
+  }
+  .cta-button:hover { transform: translateY(-2px); }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px 20px;
+  }
+  section { margin-bottom: 64px; }
+  h2 {
+    font-size: 1.5em;
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+  }
+  .feature-card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  }
+  .feature-card h3 {
+    margin-top: 0;
+    color: var(--teal-dark);
+    font-size: 1.1em;
+  }
+  .feature-card p {
+    color: var(--text-grey);
+    font-size: 0.95em;
+    margin-bottom: 0;
+  }
+  .screenshots {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 8px 4px 20px;
+    scroll-snap-type: x mandatory;
+  }
+  .screenshots img {
+    height: 480px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+  .privacy-box {
+    background: white;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .privacy-box a {
+    color: var(--teal-dark);
+    font-weight: 600;
+  }
+  footer {
+    text-align: center;
+    padding: 32px 20px 48px;
+    color: var(--text-grey);
+    font-size: 0.9em;
+  }
+  footer a { color: var(--teal-dark); }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --text: #f0f0f0;
+      --text-grey: #aaa;
+    }
+    .feature-card, .privacy-box { background: #1e1e1e; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <img class="icon" src="assets/icon-512.png" alt="QR & Barcode Toolkit app icon">
+  <h1>QR & Barcode Toolkit</h1>
+  <p class="tagline">
+    A fast, offline QR code and barcode scanner and generator. No account,
+    no location tracking, no subscriptions — just scan, generate, and go.
+  </p>
+  <!-- NOTE: this links to the Play Store URL this app WILL have once
+       published (constructed from its real, already-locked-in package
+       name, com.grv.qr_barcode_toolkit) rather than a meaningless
+       placeholder. It won't resolve to a live listing until the app is
+       actually published, but it needs no edit once it is. -->
+  <a class="cta-button" href="https://play.google.com/store/apps/details?id=com.grv.qr_barcode_toolkit">
+    ▶ Get it on Google Play
+  </a>
+</header>
+
+<main>
+  <section id="features">
+    <h2>Everything you need, nothing you don't</h2>
+    <div class="features">
+      <div class="feature-card">
+        <h3>Instant scanning</h3>
+        <p>Point your camera at any QR code or barcode for instant detection — or pick a photo from your gallery instead.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Auto zoom</h3>
+        <p>Struggling with a small or far-away code? The camera automatically zooms in to help catch it.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Generate codes</h3>
+        <p>Create QR codes for text, URLs, phone numbers, and WiFi networks (scan to join automatically), plus standard barcodes.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Compare prices</h3>
+        <p>Scan a product barcode and jump straight to price comparison results — no extra app needed.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Full history, with favorites</h3>
+        <p>Every scan and generated code is saved locally. Search your history or star your favorites for quick access.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Privacy by design</h3>
+        <p>No account, no login, no location tracking. Everything stays on your device — uninstalling removes it all.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="screenshots">
+    <h2>See it in action</h2>
+    <div class="screenshots">
+      <img src="assets/screenshot-scan.png" alt="QR & Barcode Toolkit Scan screen with live camera detection">
+      <img src="assets/screenshot-generate.png" alt="QR & Barcode Toolkit Generate screen creating a WiFi QR code">
+      <img src="assets/screenshot-history.png" alt="QR & Barcode Toolkit History screen with search and favorites">
+    </div>
+  </section>
+
+  <section id="privacy">
+    <div class="privacy-box">
+      <h2 style="margin-bottom:12px;">Your data stays yours</h2>
+      <p>
+        No account required. No location access, ever. Everything you scan
+        or generate is stored only on your device.
+        Read the full <a href="privacy-policy.html">Privacy Policy</a>.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>
+    QR &amp; Barcode Toolkit · <a href="privacy-policy.html">Privacy Policy</a>
+    · Contact: <a href="mailto:gaurav954624@gmail.com">gaurav954624@gmail.com</a>
+  </p>
+  <p>© 2026 Gaurav. All rights reserved.</p>
+</footer>
+
+</body>
+</html>

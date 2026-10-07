@@ -1,26 +1,31 @@
-# Hosting the Privacy Policy (free, via GitHub Pages)
+# Hosting (GitHub Pages) — landing page + privacy policy
 
-This repo's `docs/privacy-policy.html` becomes a real public URL with zero
-extra services — GitHub Pages serves files straight from your repo for free.
+docs/index.html (the app's landing page) and docs/privacy-policy.html are
+both ready to go — placeholders are filled in (date, contact email).
 
 ## One-time setup
-1. Fill in the three placeholders in `docs/privacy-policy.html` first:
-   - `<!-- REPLACE_DATE -->` — today's date
-   - `<!-- REPLACE_DEVELOPER_NAME -->` — your name or company name
-   - `<!-- REPLACE_SUPPORT_EMAIL -->` (appears twice) — your real support email
-2. Commit and push (instructions below).
-3. On GitHub: your repo → **Settings → Pages**.
-4. Under "Build and deployment" → Source: **Deploy from a branch**.
-5. Branch: **main**, folder: **/docs**. Save.
-6. Wait ~1 minute, then your policy is live at:
-   `https://<your-github-username>.github.io/<repo-name>/privacy-policy.html`
+1. Push these files (commands given alongside this).
+2. On GitHub: your repo → **Settings → Pages**.
+3. Under "Build and deployment" → Source: **Deploy from a branch**.
+4. Branch: **main**, folder: **/docs**. Save.
+5. Wait ~1 minute. Live at:
+   - Landing page: `https://gauravkumarit8.github.io/QR-Barcode-Toolkit/`
+   - Privacy policy: `https://gauravkumarit8.github.io/QR-Barcode-Toolkit/privacy-policy.html`
 
-## Then update the app and Play Console
-- Replace the placeholder URL in `lib/screens/settings_screen.dart`
-  (search for `example.com`) with the real URL above.
-- Paste the same URL into Play Console when you submit: App content →
-  Privacy policy.
+Both URLs are already wired into the app (Settings → Privacy Policy /
+Contact support) and into PLAY_CONSOLE_CHECKLIST.md — nothing else to update
+once Pages is turned on.
+
+## About the "Get it on Google Play" button
+index.html links to:
+`https://play.google.com/store/apps/details?id=com.grv.qr_barcode_toolkit`
+
+This is built from the app's real, already-locked-in package name — not a
+meaningless placeholder. It won't resolve to a real listing until the app
+is actually published on Play, but once it is, this link works with no
+edit needed. If you'd rather it point somewhere else until launch (e.g. a
+"coming soon" page), search index.html for that URL and swap it.
 
 ## Editing later
-Any edit to `docs/privacy-policy.html` on `main` updates the live page
-automatically within about a minute — no redeploy step needed.
+Any edit to files under docs/ on main updates the live site automatically
+within about a minute.

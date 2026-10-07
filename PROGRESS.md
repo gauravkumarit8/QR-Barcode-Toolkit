@@ -147,3 +147,19 @@ complaint found in their actual reviews, with what it means for us.
       All/Favorites filter chip row above the list. Old history items
       without the field default to favorite:false on load (backward compatible).
 - [ ] vCard + Email generation (next gap to close)
+
+## Web presence
+- [x] Landing page (docs/index.html) — SEO meta tags (description, Open
+      Graph, Twitter card, JSON-LD SoftwareApplication structured data),
+      hero section, feature grid, screenshot gallery (using the generated
+      mockups), privacy highlight, footer. Dark-mode aware via prefers-color-scheme.
+- [x] robots.txt + sitemap.xml for crawling
+- [x] Privacy policy placeholders filled: date (Oct 7, 2026), developer
+      name (Gaurav), contact email (gaurav954624@gmail.com)
+- [x] App's Settings screen now points at the real hosted URLs (no more
+      YOUR_GITHUB_USERNAME / YOUR_SUPPORT_EMAIL placeholders)
+- [ ] Enable GitHub Pages (Settings → Pages → main → /docs) — one manual click, see docs/HOSTING.md
+- [ ] "Get it on Google Play" button uses the real future Play URL
+      (built from the locked-in package name) — will work automatically
+      once published, no edit needed; swap it if you'd rather show a
+      "coming soon" page until then

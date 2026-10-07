@@ -7,12 +7,9 @@ import '../services/pro_service.dart';
 import '../services/purchase_service.dart';
 import '../services/settings_service.dart';
 
-// TODO: fill these in once docs/privacy-policy.html is hosted (see
-// docs/HOSTING.md) and you have a real support inbox. Replace, then delete
-// this comment block.
 const _privacyPolicyUrl =
-    'https://YOUR_GITHUB_USERNAME.github.io/QR-Barcode-Toolkit/privacy-policy.html';
-const _supportEmail = 'YOUR_SUPPORT_EMAIL@example.com';
+    'https://gauravkumarit8.github.io/qr-barcode-toolkit/privacy-policy.html';
+const _supportEmail = 'gaurav954624@gmail.com';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
