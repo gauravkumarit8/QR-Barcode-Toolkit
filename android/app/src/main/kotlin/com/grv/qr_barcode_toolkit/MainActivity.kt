@@ -1,4 +1,4 @@
-package com.example.qr_barcode_toolkit
+package com.grv.qr_barcode_toolkit
 
 import io.flutter.embedding.android.FlutterActivity
 
