@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="qr_barcode_toolkit"
+        android:label="QR &amp; Barcode Toolkit"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
