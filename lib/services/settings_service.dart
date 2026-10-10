@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsService {
   static const _themeModeKey = 'theme_mode_v1';
   static const _autoSaveKey = 'auto_save_scans_v1';
+  static const _hapticKey = 'haptic_feedback_v1';
+  static const _soundKey = 'sound_feedback_v1';
 
   Future<ThemeMode> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -34,5 +36,27 @@ class SettingsService {
   Future<void> setAutoSaveScans(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoSaveKey, value);
+  }
+
+  /// Short vibration when a code is scanned. On by default.
+  Future<bool> getHapticFeedback() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_hapticKey) ?? true;
+  }
+
+  Future<void> setHapticFeedback(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hapticKey, value);
+  }
+
+  /// Click sound when a code is scanned. Off by default (quiet is safer).
+  Future<bool> getSoundFeedback() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_soundKey) ?? false;
+  }
+
+  Future<void> setSoundFeedback(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_soundKey, value);
   }
 }

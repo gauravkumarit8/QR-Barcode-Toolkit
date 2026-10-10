@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
@@ -93,11 +94,32 @@ class _GenerateScreenState extends State<GenerateScreen> {
           _WifiEncryption.wep => 'WEP',
           _WifiEncryption.none => 'nopass',
         };
-        return 'WIFI:T:$enc;S:${_ssidController.text};P:${_passwordController.text};H:false;;';
+        final password = enc == 'nopass'
+            ? ''
+            : 'P:${_escapeWifi(_passwordController.text)};';
+        return 'WIFI:T:$enc;S:${_escapeWifi(_ssidController.text)};${password}H:false;;';
       case _GenType.barcode:
         return _barcodeValueController.text;
     }
   }
+
+  /// Wi-Fi QR format: backslash-escape \ ; , : and " so a password such as
+  /// "pa;ss" doesn't corrupt the code (phones would read the wrong password).
+  String _escapeWifi(String v) =>
+      v.replaceAllMapped(RegExp(r'[\\;,:"]'), (m) => '\\${m[0]}');
+
+  bool get _barcodeNeedsDigits =>
+      _barcodeFormat == _BarcodeFormat.ean13 ||
+      _barcodeFormat == _BarcodeFormat.upcA ||
+      _barcodeFormat == _BarcodeFormat.itf;
+
+  String get _barcodeHint => switch (_barcodeFormat) {
+        _BarcodeFormat.code128 => 'Letters, numbers and symbols',
+        _BarcodeFormat.ean13 => '12 or 13 digits',
+        _BarcodeFormat.upcA => '11 or 12 digits',
+        _BarcodeFormat.code39 => 'Capital letters, digits and a few symbols',
+        _BarcodeFormat.itf => 'Digits only, an even number of them',
+      };
 
   bool get _hasData => _selected == _GenType.barcode
       ? _barcodeValueController.text.isNotEmpty
@@ -260,8 +282,10 @@ class _GenerateScreenState extends State<GenerateScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               FilledButton(
                 onPressed: !_hasData || _saving ? null : _savePng,
@@ -355,7 +379,15 @@ class _GenerateScreenState extends State<GenerateScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _barcodeValueController,
-              decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Value'),
+              keyboardType:
+                  _barcodeNeedsDigits ? TextInputType.number : TextInputType.text,
+              inputFormatters:
+                  _barcodeNeedsDigits ? [FilteringTextInputFormatter.digitsOnly] : null,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'Value',
+                helperText: _barcodeHint,
+              ),
               onChanged: (_) => setState(() {}),
             ),
           ],

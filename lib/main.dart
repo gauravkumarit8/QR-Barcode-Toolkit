@@ -19,11 +19,17 @@ final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(ThemeMode.syste
 /// rebuilds) by ScanScreen at detection time.
 final ValueNotifier<bool> autoSaveScansNotifier = ValueNotifier(true);
 
+/// Vibrate / beep when a code is scanned. Same pattern as above.
+final ValueNotifier<bool> hapticFeedbackNotifier = ValueNotifier(true);
+final ValueNotifier<bool> soundFeedbackNotifier = ValueNotifier(false);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = SettingsService();
   themeModeNotifier.value = await settings.getThemeMode();
   autoSaveScansNotifier.value = await settings.getAutoSaveScans();
+  hapticFeedbackNotifier.value = await settings.getHapticFeedback();
+  soundFeedbackNotifier.value = await settings.getSoundFeedback();
   await ProService.load();
   PurchaseService.init();
   runApp(const QrBarcodeToolkitApp());
@@ -71,15 +77,21 @@ class _RootShellState extends State<RootShell> {
   // Shared between History ("Re-generate") and Generate (consumes the value).
   final ValueNotifier<String?> _regeneratePrefill = ValueNotifier(null);
 
+  // True only while the Scan tab is the visible screen. ScanScreen pauses the
+  // camera when this goes false (other tab, or Settings open on top) so the
+  // camera is not left running in the background.
+  final ValueNotifier<bool> _scanActive = ValueNotifier(true);
+
   static const _titles = ['Scan', 'Generate', 'History'];
 
   late final List<Widget> _screens = [
-    const ScanScreen(),
+    ScanScreen(isActive: _scanActive),
     GenerateScreen(regeneratePrefill: _regeneratePrefill),
     HistoryScreen(
       onRegenerate: (value) {
         _regeneratePrefill.value = value;
         setState(() => _currentIndex = 1);
+        _scanActive.value = false;
       },
     ),
   ];
@@ -97,6 +109,7 @@ class _RootShellState extends State<RootShell> {
   @override
   void dispose() {
     _regeneratePrefill.dispose();
+    _scanActive.dispose();
     super.dispose();
   }
 
@@ -108,10 +121,12 @@ class _RootShellState extends State<RootShell> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () {
-              Navigator.of(context).push(
+            onPressed: () async {
+              _scanActive.value = false;
+              await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
+              _scanActive.value = _currentIndex == 0;
             },
           ),
         ],
@@ -129,7 +144,10 @@ class _RootShellState extends State<RootShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index) => setState(() => _currentIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _currentIndex = index);
+          _scanActive.value = index == 0;
+        },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.qr_code_scanner_outlined),
