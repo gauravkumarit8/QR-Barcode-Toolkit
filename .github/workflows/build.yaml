@@ -98,3 +98,13 @@ jobs:
           name: release-aab
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
+
+      - name: Build signed release APK (for sideload testing)
+        run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
