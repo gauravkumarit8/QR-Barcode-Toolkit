@@ -10,9 +10,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../main.dart'
     show autoSaveScansNotifier, hapticFeedbackNotifier, soundFeedbackNotifier;
 import '../models/history_item.dart';
+import '../services/export_service.dart';
 import '../services/history_service.dart';
+import '../services/pro_service.dart';
+import '../utils/csv_builder.dart';
 import '../utils/link_safety.dart';
 import '../utils/scan_content.dart';
+import '../widgets/pro_gate.dart';
 
 /// Scan tab.
 ///
@@ -37,6 +41,14 @@ class _Action {
   const _Action(this.label, this.icon, this.onTap);
 }
 
+/// One code captured in batch mode.
+class _BatchEntry {
+  final String value;
+  final BarcodeFormat format;
+  final DateTime at;
+  const _BatchEntry(this.value, this.format, this.at);
+}
+
 class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   final _historyService = HistoryService();
   final _scannerController = MobileScannerController();
@@ -48,6 +60,12 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   String? _lastScanValue;
   BarcodeFormat? _lastScanFormat;
   bool _savedToHistory = false;
+
+  // Batch mode: keep scanning, collect every distinct code into a list.
+  bool _batchMode = false;
+  final List<_BatchEntry> _batch = [];
+  final Set<String> _batchSeen = {};
+  int _idSeq = 0; // keeps history ids unique when several codes are saved at once
 
   // Several codes in one frame (e.g. a parcel with multiple barcodes): we
   // collect for a moment, and if there is more than one, ask which one.
@@ -193,7 +211,11 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   void _startIdleTimers() {
     _idleHintTimer?.cancel();
     _idleHintTimer = Timer(const Duration(seconds: 10), () {
-      if (!mounted || _lastScanValue != null || _shownIdleHint || !_cameraRunning) {
+      if (!mounted ||
+          _lastScanValue != null ||
+          _batch.isNotEmpty ||
+          _shownIdleHint ||
+          !_cameraRunning) {
         return;
       }
       _shownIdleHint = true;
@@ -212,6 +234,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   /// Every 3s with no detection, zoom in a little further (up to a cap).
+  /// Skipped in batch mode, where the user is moving between items.
   void _startAutoZoom() {
     _autoZoomTimer?.cancel();
     _autoZoomTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
@@ -219,7 +242,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         timer.cancel();
         return;
       }
-      if (_zoomScale >= _maxAutoZoom) return;
+      if (_batchMode || _zoomScale >= _maxAutoZoom) return;
       _setZoom((_zoomScale + _autoZoomStep).clamp(0.0, _maxAutoZoom).toDouble());
     });
   }
@@ -233,7 +256,12 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   // ---------------------------------------------------------------- detection
 
   void _onDetect(BarcodeCapture capture) {
-    if (_lastScanValue != null || _choosing || !_cameraRunning) return;
+    if (!_cameraRunning) return;
+    if (_batchMode) {
+      _addToBatch(capture.barcodes);
+      return;
+    }
+    if (_lastScanValue != null || _choosing) return;
     if (DateTime.now().isBefore(_ignoreDetectionsUntil)) return;
 
     for (final b in capture.barcodes) {
@@ -312,10 +340,14 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _accept(String value, BarcodeFormat format) {
-    _cancelIdleTimers();
+  void _giveFeedback() {
     if (hapticFeedbackNotifier.value) HapticFeedback.mediumImpact();
     if (soundFeedbackNotifier.value) SystemSound.play(SystemSoundType.click);
+  }
+
+  void _accept(String value, BarcodeFormat format) {
+    _cancelIdleTimers();
+    _giveFeedback();
     setState(() {
       _lastScanValue = value;
       _lastScanFormat = format;
@@ -357,7 +389,198 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       _snack('No QR code or barcode found in that image');
       return;
     }
+    if (_batchMode) {
+      _addToBatch(unique.values.toList());
+      return;
+    }
     await _resolveFound(unique.values.toList());
+  }
+
+  // -------------------------------------------------------------------- batch
+
+  Future<void> _toggleBatch() async {
+    if (!_batchMode) {
+      if (_lastScanValue != null) _dismissResult();
+      setState(() => _batchMode = true);
+      return;
+    }
+    if (_batch.isNotEmpty) {
+      final leave = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Leave batch mode?'),
+          content: Text(
+            autoSaveScansNotifier.value
+                ? 'This clears the list of ${_batch.length} codes. They stay in your History.'
+                : 'This clears the list of ${_batch.length} scanned codes. '
+                    'Auto-save is off, so they will not be kept anywhere. '
+                    'Export them first if you need them.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Keep scanning'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Clear and leave'),
+            ),
+          ],
+        ),
+      );
+      if (leave != true || !mounted) return;
+    }
+    setState(() {
+      _batchMode = false;
+      _batch.clear();
+      _batchSeen.clear();
+    });
+  }
+
+  /// Adds every code in [barcodes] that is not already in the batch.
+  void _addToBatch(List<Barcode> barcodes) {
+    var added = false;
+    for (final b in barcodes) {
+      final v = b.rawValue;
+      if (v == null || v.isEmpty || !_batchSeen.add(v)) continue;
+      _batch.add(_BatchEntry(v, b.format, DateTime.now()));
+      added = true;
+      if (autoSaveScansNotifier.value) _saveValueToHistory(v);
+    }
+    if (!added) return;
+    _cancelIdleTimers();
+    _giveFeedback();
+    setState(() {});
+  }
+
+  Future<void> _openBatchReview() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sheetContext).size.height * 0.8,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_batch.length} codes scanned',
+                            style: Theme.of(sheetContext).textTheme.titleMedium,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.pop(sheetContext),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _batch.length,
+                      itemBuilder: (context, i) {
+                        final e = _batch[_batch.length - 1 - i]; // newest first
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                            e.value,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${_formatName(e.format)} · ${_kindTitle(ScanContent.parse(e.value).kind)}',
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: 'Remove from list',
+                            onPressed: () {
+                              setState(() {
+                                _batchSeen.remove(e.value);
+                                _batch.remove(e);
+                              });
+                              if (_batch.isEmpty) {
+                                Navigator.pop(sheetContext);
+                              } else {
+                                setSheetState(() {});
+                              }
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => _exportBatchCsv(sheetContext),
+                          icon: const Icon(Icons.table_chart_outlined),
+                          label: const Text('Export CSV'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _copyBatch,
+                          icon: const Icon(Icons.copy_outlined),
+                          label: const Text('Copy all'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => Share.share(_batchAsText()),
+                          icon: const Icon(Icons.share_outlined),
+                          label: const Text('Share list'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _batchAsText() => _batch.map((e) => e.value).join('\n');
+
+  Future<void> _copyBatch() async {
+    await Clipboard.setData(ClipboardData(text: _batchAsText()));
+    _snack('Copied ${_batch.length} codes');
+  }
+
+  Future<void> _exportBatchCsv(BuildContext sheetContext) async {
+    if (!ProService.isPro.value) {
+      await showProRequired(sheetContext, feature: 'Export to CSV');
+      return;
+    }
+    final rows = [
+      for (final e in _batch)
+        [
+          e.at.toIso8601String(),
+          ScanContent.parse(e.value).kind.name,
+          _formatName(e.format),
+          e.value,
+        ],
+    ];
+    final csv = CsvBuilder.build(const ['date_time', 'type', 'format', 'value'], rows);
+    try {
+      await ExportService.shareCsv(csv, baseName: 'qr-toolkit-batch');
+    } catch (_) {
+      _snack('Could not create the CSV file');
+    }
   }
 
   // ------------------------------------------------------------------ actions
@@ -460,16 +683,20 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     await _launch(Uri.parse('https://www.google.com/search?tbm=shop&q=$query'));
   }
 
-  Future<void> _saveToHistory() async {
-    final value = _lastScanValue;
-    if (value == null || _savedToHistory) return;
-    setState(() => _savedToHistory = true); // set first: avoids double-saves
-    await _historyService.add(HistoryItem(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+  Future<void> _saveValueToHistory(String value) {
+    return _historyService.add(HistoryItem(
+      id: '${DateTime.now().microsecondsSinceEpoch}-${_idSeq++}',
       type: 'scan',
       value: value,
       timestamp: DateTime.now(),
     ));
+  }
+
+  Future<void> _saveToHistory() async {
+    final value = _lastScanValue;
+    if (value == null || _savedToHistory) return;
+    setState(() => _savedToHistory = true); // set first: avoids double-saves
+    await _saveValueToHistory(value);
   }
 
   /// True for retail product barcodes (EAN-13/8, UPC-A/E) with a numeric value.
@@ -587,6 +814,13 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                 onDismiss: _dismissResult,
               ),
             ),
+          )
+        else if (_batchMode)
+          _BatchBar(
+            count: _batch.length,
+            last: _batch.isEmpty ? null : _batch.last.value,
+            onReview: _openBatchReview,
+            onExit: _toggleBatch,
           ),
       ],
     );
@@ -669,7 +903,13 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
           Positioned(
             top: 8,
             right: 8,
-            child: Column(
+            // A vertical Wrap: if the camera area is short (tall result panel
+            // on a small phone) the buttons flow into a second column instead
+            // of overflowing.
+            child: Wrap(
+              direction: Axis.vertical,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 _CamButton(
                   icon: _torchOn ? Icons.flash_on : Icons.flash_off,
@@ -680,32 +920,38 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                     setState(() => _torchOn = !_torchOn);
                   },
                 ),
-                const SizedBox(height: 8),
                 _CamButton(
                   icon: Icons.cameraswitch_outlined,
                   tooltip: 'Switch camera',
                   onPressed: () =>
                       unawaited(_scannerController.switchCamera().catchError((_) {})),
                 ),
-                const SizedBox(height: 8),
                 _CamButton(
                   icon: Icons.photo_library_outlined,
                   tooltip: 'Scan from gallery',
                   onPressed: _pickFromGallery,
                 ),
+                _CamButton(
+                  icon: Icons.layers_outlined,
+                  tooltip: _batchMode ? 'Leave batch mode' : 'Batch scan',
+                  active: _batchMode,
+                  onPressed: _toggleBatch,
+                ),
               ],
             ),
           ),
           if (_lastScanValue == null)
-            const Positioned(
+            Positioned(
               bottom: 16,
               left: 0,
               right: 0,
               child: IgnorePointer(
                 child: Text(
-                  'Point at a QR code or barcode',
+                  _batchMode
+                      ? 'Batch mode: scan codes one after another'
+                      : 'Point at a QR code or barcode',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 15),
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
                 ),
               ),
             ),
@@ -781,6 +1027,62 @@ class _ScanFramePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Compact bar shown in batch mode: how many codes so far, the latest one,
+/// and a Review button that opens the list.
+class _BatchBar extends StatelessWidget {
+  final int count;
+  final String? last;
+  final VoidCallback onReview;
+  final VoidCallback onExit;
+
+  const _BatchBar({
+    required this.count,
+    required this.last,
+    required this.onReview,
+    required this.onExit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    count == 0 ? 'Batch mode' : 'Batch · $count scanned',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                  ),
+                  Text(
+                    last == null ? 'Scan codes one after another' : 'Last: $last',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (count > 0)
+              FilledButton(onPressed: onReview, child: const Text('Review')),
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Leave batch mode',
+              onPressed: onExit,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Result shown under the camera after a scan. One prominent primary action

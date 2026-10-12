@@ -3,7 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/history_item.dart';
+import '../services/export_service.dart';
 import '../services/history_service.dart';
+import '../services/pro_service.dart';
+import '../utils/csv_builder.dart';
+import '../utils/scan_content.dart';
+import '../widgets/pro_gate.dart';
 
 class HistoryScreen extends StatefulWidget {
   final ValueChanged<String> onRegenerate;
@@ -42,6 +47,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() => _items = items);
   }
 
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _delete(String id) async {
     // Remove from the visible list synchronously: a swiped Dismissible must
     // be gone from the tree by the end of the frame or Flutter asserts.
@@ -57,6 +69,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (idx != -1) _items![idx] = item.copyWith(favorite: !item.favorite);
     });
     await _historyService.setFavorite(item.id, !item.favorite);
+  }
+
+  /// Exports the items currently shown (respecting search / favorites filter).
+  Future<void> _exportCsv(List<HistoryItem> items) async {
+    if (items.isEmpty) {
+      _snack('Nothing to export');
+      return;
+    }
+    if (!ProService.isPro.value) {
+      await showProRequired(context, feature: 'Export to CSV');
+      return;
+    }
+    final rows = [
+      for (final i in items)
+        [
+          i.timestamp.toIso8601String(),
+          i.type == 'scan' ? 'scanned' : 'generated',
+          ScanContent.parse(i.value).kind.name,
+          i.value,
+          i.favorite ? 'yes' : 'no',
+        ],
+    ];
+    final csv = CsvBuilder.build(
+      const ['date_time', 'source', 'type', 'value', 'favorite'],
+      rows,
+    );
+    try {
+      await ExportService.shareCsv(csv, baseName: 'qr-toolkit-history');
+    } catch (_) {
+      _snack('Could not create the CSV file');
+    }
   }
 
   void _openDetail(HistoryItem item) {
@@ -141,7 +184,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
           child: Row(
             children: [
               ChoiceChip(
@@ -155,6 +198,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 label: const Text('Favorites'),
                 selected: _favoritesOnly,
                 onSelected: (_) => setState(() => _favoritesOnly = true),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.ios_share_outlined),
+                tooltip: ProService.isPro.value ? 'Export as CSV' : 'Export as CSV (Pro)',
+                onPressed: () => _exportCsv(items),
               ),
             ],
           ),
