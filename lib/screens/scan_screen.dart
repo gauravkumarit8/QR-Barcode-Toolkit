@@ -14,9 +14,9 @@ import '../services/export_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
 import '../utils/csv_builder.dart';
-import '../utils/link_safety.dart';
 import '../utils/scan_content.dart';
 import '../widgets/pro_gate.dart';
+import '../widgets/safety_dialogs.dart';
 
 /// Scan tab.
 ///
@@ -608,71 +608,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _openLink(Uri uri) async {
-    final warning = LinkSafety.checkReason(uri);
-
-    final proceed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Open this link?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(uri.toString(), maxLines: 3, overflow: TextOverflow.ellipsis),
-            if (warning != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        warning,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: warning != null
-                ? FilledButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                  )
-                : null,
-            child: Text(warning != null ? 'Open anyway' : 'Open'),
-          ),
-        ],
-      ),
-    );
-
-    if (proceed == true) await _launch(uri);
-  }
-
   Future<void> _searchOnline() async {
     final query = Uri.encodeComponent(_lastScanValue!);
     await _launch(Uri.parse('https://www.google.com/search?q=$query'));
@@ -714,7 +649,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   _Action? _primaryAction(ScanContent c) {
     switch (c.kind) {
       case ScanKind.url:
-        return _Action('Open link', Icons.open_in_new, () => _openLink(c.uri!));
+        return _Action('Open link', Icons.open_in_new, () => openLinkSafely(context, c.uri!));
       case ScanKind.wifi:
         final w = c.wifi!;
         if (w.hasPassword) {
@@ -733,6 +668,11 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         return _Action('Open in Maps', Icons.map_outlined, () => _launch(c.uri!));
       case ScanKind.product:
         return _Action('Compare prices', Icons.price_check, _comparePrices);
+      case ScanKind.payment:
+        final payUri = c.uri;
+        if (payUri == null) return null; // e.g. a merchant QR with no app link
+        return _Action('Open payment app', Icons.payments_outlined,
+            () => confirmAndOpenPayment(context, payUri, c.payment!));
       case ScanKind.text:
         return _Action('Search online', Icons.search, _searchOnline);
     }
@@ -746,6 +686,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         ScanKind.sms => 'Text message',
         ScanKind.geo => 'Location',
         ScanKind.product => 'Product barcode',
+        ScanKind.payment => 'Payment code',
         ScanKind.text => 'Text',
       };
 
@@ -1126,6 +1067,31 @@ class _ResultPanel extends StatelessWidget {
               ? 'Open network (no password)'
               : 'Security: ${wifi.security}'),
           if (wifi.hasPassword) SelectableText('Password: ${wifi.password}'),
+        ],
+      );
+    }
+    final pay = content.payment;
+    if (content.kind == ScanKind.payment && pay != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            pay.payeeName ?? 'Name not given in the code',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          if (pay.payeeId != null) SelectableText('UPI ID: ${pay.payeeId}'),
+          if (pay.place != null) Text(pay.place!),
+          Text(pay.amountLabel != null
+              ? 'Amount: ${pay.amountLabel}'
+              : 'Amount: you choose it in your payment app'),
+          if (pay.note != null) Text('Note: ${pay.note}'),
+          const SizedBox(height: 4),
+          const Text('Check that this name and ID are who you mean to pay.'),
+          const SizedBox(height: 10),
+          WarningBox(messages: [pay.warning]),
         ],
       );
     }

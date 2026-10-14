@@ -10,31 +10,49 @@ class LinkSafety {
     'rebrand.ly', 'cutt.ly', 'shorturl.at', 'rb.gy', 'tiny.cc',
   };
 
-  /// Returns a short reason string if the URL looks worth a second look,
-  /// or null if nothing stood out. A null result is NOT a guarantee of
-  /// safety — it just means these specific heuristics found nothing.
-  static String? checkReason(Uri uri) {
+  /// Every reason this link deserves a second look. Empty means none of these
+  /// specific checks fired — NOT a guarantee that the link is safe.
+  static List<String> reasons(Uri uri) {
     final host = uri.host.toLowerCase();
+    final out = <String>[];
 
     if (_shortenerHosts.contains(host)) {
-      return 'This is a shortened link — the real destination is hidden until you open it.';
+      out.add('This is a shortened link — the real destination is hidden until you open it.');
     }
-
     if (_isRawIpHost(host)) {
-      return 'This link points directly to an IP address rather than a normal website name.';
+      out.add('This link points directly to an IP address rather than a normal website name.');
     }
-
-    if (host.startsWith('xn--') || host.contains('.xn--')) {
-      return 'This web address uses characters that can be made to look like a different, trusted site.';
+    if (host.startsWith('xn--') || host.contains('.xn--') || host.runes.any((r) => r > 127)) {
+      out.add('This web address uses characters that can be made to look like a different, trusted site.');
     }
-
     if (uri.userInfo.isNotEmpty) {
       // e.g. http://real-bank.com@evil.example — browsers ignore the part
       // before @ as auth info, but many users read it as the domain.
-      return 'This link is disguised to look like it goes to a different site than it actually does.';
+      out.add('This link is disguised to look like it goes to a different site than it actually does.');
     }
+    if (host.split('.').length >= 5) {
+      out.add('This address has many parts before the site name. Scammers use long addresses to imitate real sites, so check the very end of the address.');
+    }
+    if (uri.scheme == 'http') {
+      out.add('This link is not encrypted (http), so anything you type on the page could be seen or changed on the way.');
+    }
+    return out;
+  }
 
-    return null;
+  /// The most serious reason, or null if none fired.
+  static String? checkReason(Uri uri) {
+    final r = reasons(uri);
+    return r.isEmpty ? null : r.first;
+  }
+
+  /// Everything after the host (path, query, fragment), shown small under the
+  /// host so the part that identifies the site is what the user reads first.
+  static String restOf(Uri uri) {
+    final b = StringBuffer(uri.path);
+    if (uri.hasQuery) b.write('?${uri.query}');
+    if (uri.hasFragment) b.write('#${uri.fragment}');
+    final s = b.toString();
+    return s == '/' ? '' : s;
   }
 
   static bool _isRawIpHost(String host) {

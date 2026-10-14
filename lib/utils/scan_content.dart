@@ -3,7 +3,7 @@
 /// password...) instead of a generic "Search online" for everything.
 ///
 /// Pure Dart, no Flutter imports, so it is easy to unit test.
-enum ScanKind { url, wifi, phone, email, sms, geo, product, text }
+enum ScanKind { url, wifi, phone, email, sms, geo, product, payment, text }
 
 class WifiInfo {
   final String ssid;
@@ -21,17 +21,64 @@ class WifiInfo {
   bool get hasPassword => password != null && password!.isNotEmpty;
 }
 
+/// Details read from a payment code: a UPI link (upi://pay?...) or an EMVCo
+/// merchant QR (the standard behind BharatQR, Pix and many others).
+///
+/// Everything here is text taken from the code. The payee name in particular
+/// is chosen by whoever made the code, so the UI always shows the payment ID
+/// next to it and tells the user to check it.
+class PaymentInfo {
+  final String scheme; // 'upi' or 'emv'
+  final String? payeeName;
+  final String? payeeId; // UPI ID (VPA); UPI links only
+  final String? place; // merchant city; EMV codes only
+  final String? amount; // digits only, e.g. "499.00"
+  final String? currency; // e.g. "INR"
+  final String? note;
+  final bool isCollectRequest;
+
+  const PaymentInfo({
+    required this.scheme,
+    this.payeeName,
+    this.payeeId,
+    this.place,
+    this.amount,
+    this.currency,
+    this.note,
+    this.isCollectRequest = false,
+  });
+
+  /// "₹499.00", "25.00 BRL", or null when the code sets no amount.
+  String? get amountLabel {
+    final a = amount;
+    if (a == null) return null;
+    final c = currency;
+    if (c == null) return a;
+    return c == 'INR' ? '\u20B9$a' : '$a $c';
+  }
+
+  String get warning {
+    const base = 'Entering your PIN in a payment app SENDS money from your '
+        'account. You never need to scan a code to receive money.';
+    if (isCollectRequest) return 'Someone is asking you to pay. $base';
+    return 'This code is a payment request. $base';
+  }
+}
+
 class ScanContent {
   final ScanKind kind;
   final String raw;
 
-  /// Set for url / phone / email / sms / geo.
+  /// Set for url / phone / email / sms / geo, and for UPI payment links.
   final Uri? uri;
 
   /// Set for wifi.
   final WifiInfo? wifi;
 
-  const ScanContent._(this.kind, this.raw, {this.uri, this.wifi});
+  /// Set for payment.
+  final PaymentInfo? payment;
+
+  const ScanContent._(this.kind, this.raw, {this.uri, this.wifi, this.payment});
 
   /// [isProductBarcode] should be true for numeric EAN/UPC retail barcodes —
   /// the caller knows the barcode format, this parser only sees the text.
@@ -43,6 +90,16 @@ class ScanContent {
       final wifi = _parseWifi(value.substring(5));
       if (wifi != null) return ScanContent._(ScanKind.wifi, raw, wifi: wifi);
     }
+
+    // Payment codes are checked early: they matter most to get right.
+    if (lower.startsWith('upi:')) {
+      final pay = _parseUpi(value);
+      if (pay != null) {
+        return ScanContent._(ScanKind.payment, raw, uri: Uri.tryParse(value), payment: pay);
+      }
+    }
+    final emv = _parseEmv(value);
+    if (emv != null) return ScanContent._(ScanKind.payment, raw, payment: emv);
 
     if (lower.startsWith('tel:')) {
       final uri = Uri.tryParse(value);
@@ -142,6 +199,101 @@ class ScanContent {
       password: fields['P'],
       security: fields['T'] ?? 'nopass',
       hidden: (fields['H'] ?? '').toLowerCase() == 'true',
+    );
+  }
+
+  // ----------------------------------------------------------------- payment
+
+  static String? _clean(String? s) {
+    final t = s?.trim();
+    return (t == null || t.isEmpty) ? null : t;
+  }
+
+  /// Reads the query string by hand: Uri.parse is stricter than real-world QR
+  /// codes (unescaped spaces, bad % sequences), and a payment code that fails
+  /// to parse must still be recognised as a payment code.
+  static Map<String, String> _query(String value) {
+    final i = value.indexOf('?');
+    if (i < 0) return const {};
+    final out = <String, String>{};
+    for (final part in value.substring(i + 1).split('&')) {
+      if (part.isEmpty) continue;
+      final eq = part.indexOf('=');
+      final k = eq < 0 ? part : part.substring(0, eq);
+      final v = eq < 0 ? '' : part.substring(eq + 1);
+      try {
+        out[Uri.decodeQueryComponent(k).toLowerCase()] = Uri.decodeQueryComponent(v);
+      } catch (_) {
+        out[k.toLowerCase()] = v;
+      }
+    }
+    return out;
+  }
+
+  /// upi://pay?pa=shop@bank&pn=Shop%20Name&am=499.00&cu=INR&tn=Order
+  static PaymentInfo? _parseUpi(String value) {
+    final rest = value.substring(4).replaceFirst(RegExp(r'^/*'), ''); // after "upi:"
+    final q = rest.indexOf('?');
+    final action = (q < 0 ? rest : rest.substring(0, q)).toLowerCase();
+    if (action != 'pay' && action != 'collect') return null;
+
+    final params = _query(value);
+    final amount = _clean(params['am']);
+    return PaymentInfo(
+      scheme: 'upi',
+      payeeName: _clean(params['pn']),
+      payeeId: _clean(params['pa']),
+      amount: (amount != null && RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(amount)) ? amount : null,
+      currency: _clean(params['cu'])?.toUpperCase() ?? 'INR',
+      note: _clean(params['tn']),
+      isCollectRequest: action == 'collect',
+    );
+  }
+
+  static const _emvCurrencies = {
+    '356': 'INR',
+    '986': 'BRL',
+    '840': 'USD',
+    '978': 'EUR',
+    '826': 'GBP',
+    '702': 'SGD',
+    '458': 'MYR',
+    '764': 'THB',
+    '360': 'IDR',
+    '608': 'PHP',
+    '784': 'AED',
+    '682': 'SAR',
+    '710': 'ZAR',
+    '392': 'JPY',
+    '156': 'CNY',
+  };
+
+  /// EMVCo merchant-presented QR: a run of tag(2) length(2) value fields that
+  /// starts with "000201" and ends with the CRC field "6304" + 4 hex digits.
+  static PaymentInfo? _parseEmv(String v) {
+    if (!v.startsWith('000201')) return null;
+    if (!RegExp(r'6304[0-9A-Fa-f]{4}$').hasMatch(v)) return null;
+
+    final tags = <String, String>{};
+    var i = 0;
+    while (i + 4 <= v.length) {
+      final tag = v.substring(i, i + 2);
+      final len = int.tryParse(v.substring(i + 2, i + 4));
+      if (len == null || i + 4 + len > v.length) break;
+      tags[tag] = v.substring(i + 4, i + 4 + len);
+      i += 4 + len;
+    }
+    // A real payment payload always names the merchant or country.
+    if (!tags.containsKey('59') && !tags.containsKey('58')) return null;
+
+    final amount = _clean(tags['54']);
+    final code = _clean(tags['53']);
+    return PaymentInfo(
+      scheme: 'emv',
+      payeeName: _clean(tags['59']),
+      place: _clean(tags['60']),
+      amount: (amount != null && RegExp(r'^\d+(\.\d+)?$').hasMatch(amount)) ? amount : null,
+      currency: code == null ? null : (_emvCurrencies[code] ?? 'code $code'),
     );
   }
 }

@@ -16,11 +16,6 @@ enum _WifiEncryption { wpa, wep, none }
 
 enum _BarcodeFormat { code128, ean13, upcA, code39, itf }
 
-/// Generate tab.
-///
-/// [regeneratePrefill] lets another screen (History's "Re-generate" button)
-/// push a value in here. When it changes, this screen switches to the Text
-/// type and fills the field with that value.
 class GenerateScreen extends StatefulWidget {
   final ValueNotifier<String?> regeneratePrefill;
 
@@ -73,12 +68,9 @@ class _GenerateScreenState extends State<GenerateScreen> {
       _selected = _GenType.text;
       _textController.text = value;
     });
-    // Consume it so switching tabs away and back doesn't re-trigger this.
     widget.regeneratePrefill.value = null;
   }
 
-  /// The literal string encoded into the QR code (not used for barcode type,
-  /// which renders from _barcodeValueController directly).
   String get _qrData {
     switch (_selected) {
       case _GenType.text:
@@ -135,9 +127,6 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<Uint8List?> _capturePreviewPng() async {
     try {
-      // Ensure the preview has actually painted this frame before capturing —
-      // calling toImage() immediately after a setState can occasionally grab
-      // a stale/blank frame, which otherwise fails silently.
       await WidgetsBinding.instance.endOfFrame;
       final boundary =
           _previewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -173,8 +162,6 @@ class _GenerateScreenState extends State<GenerateScreen> {
       return;
     }
 
-    // Uses MediaStore under the hood on Android 10+ (scoped storage) —
-    // no broad WRITE_EXTERNAL_STORAGE permission required.
     var ok = true;
     try {
       await Gal.putImageBytes(
@@ -228,6 +215,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final outline = Theme.of(context).colorScheme.outline;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -281,7 +269,34 @@ class _GenerateScreenState extends State<GenerateScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+          // Many "free" QR generators make dynamic codes that stop working
+          // when a trial ends. Ours are static: the data is inside the code.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(Icons.all_inclusive, size: 16, color: outline),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Static code: the information is stored in the code itself, '
+                    'so it never expires. No account, no tracking.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: outline),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Wrap(
             alignment: WrapAlignment.center,
             spacing: 8,
@@ -298,8 +313,6 @@ class _GenerateScreenState extends State<GenerateScreen> {
               ),
             ],
           ),
-          // TODO: banner ad (free tier only)
-          // TODO: Size/margin sliders, color picker + logo (Pro-gated, v2)
         ],
       ),
     );

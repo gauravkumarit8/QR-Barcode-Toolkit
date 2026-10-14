@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/history_item.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
@@ -9,6 +8,7 @@ import '../services/pro_service.dart';
 import '../utils/csv_builder.dart';
 import '../utils/scan_content.dart';
 import '../widgets/pro_gate.dart';
+import '../widgets/safety_dialogs.dart';
 
 class HistoryScreen extends StatefulWidget {
   final ValueChanged<String> onRegenerate;
@@ -330,8 +330,9 @@ class _DetailSheet extends StatelessWidget {
                 TextButton.icon(
                   icon: const Icon(Icons.open_in_new),
                   label: const Text('Open'),
-                  onPressed: () async {
-                    await launchUrl(Uri.parse(item.value), mode: LaunchMode.externalApplication);
+                  onPressed: () {
+                    final uri = Uri.tryParse(item.value);
+                    if (uri != null) openLinkSafely(context, uri);
                   },
                 ),
               TextButton.icon(
