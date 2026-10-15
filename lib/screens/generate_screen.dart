@@ -8,7 +8,11 @@ import 'package:barcode_widget/barcode_widget.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/history_item.dart';
+import '../services/export_service.dart';
 import '../services/history_service.dart';
+import '../services/pro_service.dart';
+import '../utils/svg_export.dart';
+import '../widgets/pro_gate.dart';
 
 enum _GenType { text, url, wifi, phone, barcode }
 
@@ -125,7 +129,10 @@ class _GenerateScreenState extends State<GenerateScreen> {
         _BarcodeFormat.itf => Barcode.itf(),
       };
 
-  Future<Uint8List?> _capturePreviewPng() async {
+  /// [targetWidth] (in pixels) is for print-quality export: the preview is
+  /// vector-drawn, so rendering it at a higher scale gives a sharp image
+  /// instead of an enlarged blurry one.
+  Future<Uint8List?> _capturePreviewPng({double? targetWidth}) async {
     try {
       await WidgetsBinding.instance.endOfFrame;
       final boundary =
@@ -134,7 +141,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
         debugPrint('QR capture: no RenderRepaintBoundary found at preview key');
         return null;
       }
-      final image = await boundary.toImage(pixelRatio: 3.0);
+      final ratio = targetWidth == null ? 3.0 : targetWidth / boundary.size.width;
+      final image = await boundary.toImage(pixelRatio: ratio);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final bytes = byteData?.buffer.asUint8List();
       if (bytes == null || bytes.isEmpty) {
@@ -196,6 +204,121 @@ class _GenerateScreenState extends State<GenerateScreen> {
       [XFile.fromData(bytes, name: 'code.png', mimeType: 'image/png')],
       text: shareText,
     );
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openPrintSheet() async {
+    final isPro = ProService.isPro.value;
+    const proChip = Chip(label: Text('Pro'), visualDensity: VisualDensity.compact);
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: Text(
+                'Print-quality export',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('High-resolution PNG'),
+              subtitle: const Text('2048 px wide, saved to your gallery'),
+              trailing: isPro ? null : proChip,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _saveHighResPng();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.draw_outlined),
+              title: const Text('SVG (vector)'),
+              subtitle: const Text('Scales to any size without blurring'),
+              trailing: isPro ? null : proChip,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _exportSvg();
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+              child: Text(
+                'Both include the blank margin scanners need. '
+                "Don't print smaller than about 2 cm (0.8 in) wide.",
+                style: Theme.of(sheetContext).textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveHighResPng() async {
+    if (!_hasData) return;
+    if (!ProService.isPro.value) {
+      await showProRequired(context, feature: 'Print-quality export');
+      return;
+    }
+    setState(() => _saving = true);
+    final bytes = await _capturePreviewPng(targetWidth: 2048);
+    if (mounted) setState(() => _saving = false);
+    if (bytes == null) {
+      _snack('Could not create the image');
+      return;
+    }
+    var ok = true;
+    try {
+      await Gal.putImageBytes(
+        bytes,
+        name: 'qr_print_${DateTime.now().millisecondsSinceEpoch}',
+      );
+    } catch (_) {
+      ok = false;
+    }
+    _snack(ok ? 'Saved a 2048 px image to your gallery' : 'Save failed');
+  }
+
+  Future<void> _exportSvg() async {
+    if (!_hasData) return;
+    if (!ProService.isPro.value) {
+      await showProRequired(context, feature: 'Print-quality export');
+      return;
+    }
+    final String svg;
+    try {
+      svg = _selected == _GenType.barcode
+          ? SvgExport.linear(_barcode, _barcodeValueController.text)
+          : SvgExport.qr(_qrData);
+    } on FormatException {
+      _snack('This text is too long to fit in a QR code');
+      return;
+    } catch (_) {
+      _snack(_selected == _GenType.barcode
+          ? 'This value is not valid for the chosen barcode format'
+          : 'Could not create the SVG');
+      return;
+    }
+    try {
+      await ExportService.shareTextFile(
+        svg,
+        baseName: 'qr-toolkit-code',
+        extension: 'svg',
+        mimeType: 'image/svg+xml',
+      );
+    } catch (_) {
+      _snack('Could not share the file');
+    }
   }
 
   Future<void> _saveToHistory() async {
@@ -310,6 +433,11 @@ class _GenerateScreenState extends State<GenerateScreen> {
               OutlinedButton(
                 onPressed: !_hasData ? null : _saveToHistory,
                 child: const Text('Save to History'),
+              ),
+              OutlinedButton.icon(
+                onPressed: !_hasData ? null : _openPrintSheet,
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Print quality'),
               ),
             ],
           ),
