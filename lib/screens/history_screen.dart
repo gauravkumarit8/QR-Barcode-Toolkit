@@ -61,6 +61,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     await _historyService.delete(id);
   }
 
+  /// Deletes, then offers Undo. Undo re-adds the same item (same id, time and
+  /// favorite flag), so it returns to its old position in the list.
+  Future<void> _deleteWithUndo(HistoryItem item) async {
+    await _delete(item.id); // setState inside runs synchronously (see _delete)
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Deleted'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => _historyService.add(item),
+          ),
+        ),
+      );
+  }
+
   Future<void> _toggleFavorite(HistoryItem item) async {
     // Optimistic local update so the star flips instantly; the service call
     // below persists it and HistoryService.changes will reconcile anyway.
@@ -103,20 +121,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _openDetail(HistoryItem item) {
+    // The sheet keeps its own copy of the item so the star flips immediately;
+    // the list behind it is updated by _toggleFavorite.
+    var current = item;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _DetailSheet(
-        item: item,
-        onDelete: () {
-          Navigator.pop(context);
-          _delete(item.id);
-        },
-        onRegenerate: () {
-          Navigator.pop(context);
-          widget.onRegenerate(item.value);
-        },
-        onToggleFavorite: () => _toggleFavorite(item),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => _DetailSheet(
+          item: current,
+          onDelete: () {
+            Navigator.pop(context);
+            _deleteWithUndo(current);
+          },
+          onRegenerate: () {
+            Navigator.pop(context);
+            widget.onRegenerate(current.value);
+          },
+          onToggleFavorite: () {
+            final before = current;
+            setSheetState(() => current = before.copyWith(favorite: !before.favorite));
+            _toggleFavorite(before);
+          },
+        ),
       ),
     );
   }
@@ -231,7 +258,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         padding: const EdgeInsets.only(right: 20),
                         child: const Icon(Icons.delete_outline),
                       ),
-                      onDismissed: (_) => _delete(item.id),
+                      onDismissed: (_) => _deleteWithUndo(item),
                       child: ListTile(
                         leading: Icon(item.type == 'scan'
                             ? Icons.qr_code_scanner

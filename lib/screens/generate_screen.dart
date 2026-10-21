@@ -160,6 +160,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
     if (!_hasData) return;
     setState(() => _saving = true);
     final bytes = await _capturePreviewPng();
+    if (!mounted) return;
     setState(() => _saving = false);
 
     if (bytes == null) {

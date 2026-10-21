@@ -1,0 +1,240 @@
+diff --git a/.gitignore b/.gitignore
+index 8d2217f..592d301 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -32,6 +32,7 @@ migrate_working_dir/
+ .pub-cache/
+ .pub/
+ /build/
++android/build/
+ flutter_*.png
+ linked_*.ds
+ unlinked.ds
+diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
+index a8ed09b..11aa491 100644
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -42,7 +42,14 @@ android {
+ 
+     buildTypes {
+         release {
+-            signingConfig = signingConfigs.getByName("release")
++            // Local `flutter build --release` has no key.properties; fall back
++            // to the debug key so it still builds. Play rejects debug-signed
++            // uploads, and CI fails before this point if secrets are missing.
++            signingConfig = if (keystorePropertiesFile.exists()) {
++                signingConfigs.getByName("release")
++            } else {
++                signingConfigs.getByName("debug")
++            }
+             isMinifyEnabled = true
+             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+         }
+diff --git a/lib/screens/generate_screen.dart b/lib/screens/generate_screen.dart
+index a2b0fab..a34cbf8 100644
+--- a/lib/screens/generate_screen.dart
++++ b/lib/screens/generate_screen.dart
+@@ -152,6 +152,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
+     if (!_hasData) return;
+     setState(() => _saving = true);
+     final bytes = await _capturePreviewPng();
++    if (!mounted) return;
+     setState(() => _saving = false);
+ 
+     if (bytes == null) {
+diff --git a/lib/screens/history_screen.dart b/lib/screens/history_screen.dart
+index cc200bb..14c9b55 100644
+--- a/lib/screens/history_screen.dart
++++ b/lib/screens/history_screen.dart
+@@ -61,6 +61,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
+     await _historyService.delete(id);
+   }
+ 
++  /// Deletes, then offers Undo. Undo re-adds the same item (same id, time and
++  /// favorite flag), so it returns to its old position in the list.
++  Future<void> _deleteWithUndo(HistoryItem item) async {
++    await _delete(item.id); // setState inside runs synchronously (see _delete)
++    if (!mounted) return;
++    ScaffoldMessenger.of(context)
++      ..hideCurrentSnackBar()
++      ..showSnackBar(
++        SnackBar(
++          content: const Text('Deleted'),
++          action: SnackBarAction(
++            label: 'Undo',
++            onPressed: () => _historyService.add(item),
++          ),
++        ),
++      );
++  }
++
+   Future<void> _toggleFavorite(HistoryItem item) async {
+     // Optimistic local update so the star flips instantly; the service call
+     // below persists it and HistoryService.changes will reconcile anyway.
+@@ -103,20 +121,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
+   }
+ 
+   void _openDetail(HistoryItem item) {
++    // The sheet keeps its own copy of the item so the star flips immediately;
++    // the list behind it is updated by _toggleFavorite.
++    var current = item;
+     showModalBottomSheet(
+       context: context,
+       isScrollControlled: true,
+-      builder: (context) => _DetailSheet(
+-        item: item,
+-        onDelete: () {
+-          Navigator.pop(context);
+-          _delete(item.id);
+-        },
+-        onRegenerate: () {
+-          Navigator.pop(context);
+-          widget.onRegenerate(item.value);
+-        },
+-        onToggleFavorite: () => _toggleFavorite(item),
++      builder: (context) => StatefulBuilder(
++        builder: (context, setSheetState) => _DetailSheet(
++          item: current,
++          onDelete: () {
++            Navigator.pop(context);
++            _deleteWithUndo(current);
++          },
++          onRegenerate: () {
++            Navigator.pop(context);
++            widget.onRegenerate(current.value);
++          },
++          onToggleFavorite: () {
++            final before = current;
++            setSheetState(() => current = before.copyWith(favorite: !before.favorite));
++            _toggleFavorite(before);
++          },
++        ),
+       ),
+     );
+   }
+@@ -231,7 +258,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
+                         padding: const EdgeInsets.only(right: 20),
+                         child: const Icon(Icons.delete_outline),
+                       ),
+-                      onDismissed: (_) => _delete(item.id),
++                      onDismissed: (_) => _deleteWithUndo(item),
+                       child: ListTile(
+                         leading: Icon(item.type == 'scan'
+                             ? Icons.qr_code_scanner
+diff --git a/lib/widgets/banner_ad_widget.dart b/lib/widgets/banner_ad_widget.dart
+index d1a7937..c8adcff 100644
+--- a/lib/widgets/banner_ad_widget.dart
++++ b/lib/widgets/banner_ad_widget.dart
+@@ -1,3 +1,5 @@
++import 'dart:async';
++import 'dart:math' as math;
+ import 'package:flutter/material.dart';
+ import 'package:google_mobile_ads/google_mobile_ads.dart';
+ import '../services/ad_service.dart';
+@@ -6,6 +8,10 @@ import '../services/pro_service.dart';
+ /// Single banner shown above the bottom navigation on every tab.
+ /// Renders nothing for Pro users, before consent is resolved, or if the ad
+ /// fails to load — so it never leaves an empty gap or blocks the UI.
++///
++/// Uses an anchored adaptive banner (sized to the screen width) and retries a
++/// failed load with exponential backoff, so one "no fill" doesn't mean no ads
++/// for the rest of the session.
+ class BannerAdWidget extends StatefulWidget {
+   const BannerAdWidget({super.key});
+ 
+@@ -14,8 +20,13 @@ class BannerAdWidget extends StatefulWidget {
+ }
+ 
+ class _BannerAdWidgetState extends State<BannerAdWidget> {
++  static const _maxRetries = 6;
++
+   BannerAd? _ad;
+   bool _loaded = false;
++  bool _loading = false; // true while the adaptive size is being resolved
++  int _failures = 0;
++  Timer? _retryTimer;
+ 
+   @override
+   void initState() {
+@@ -27,6 +38,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
+ 
+   void _onProChanged() {
+     if (ProService.isPro.value) {
++      _retryTimer?.cancel();
+       _disposeAd();
+       if (mounted) setState(() {});
+     } else {
+@@ -34,25 +46,47 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
+     }
+   }
+ 
+-  void _maybeLoad() {
+-    if (_ad != null || !AdService.adsReady.value || ProService.isPro.value) return;
++  /// Screen width in logical pixels. Read from the platform dispatcher so it
++  /// works from initState (no BuildContext / MediaQuery needed).
++  int get _screenWidthDp {
++    final view = WidgetsBinding.instance.platformDispatcher.views.first;
++    return (view.physicalSize.width / view.devicePixelRatio).truncate();
++  }
++
++  Future<void> _maybeLoad() async {
++    if (_ad != null || _loading || !AdService.adsReady.value || ProService.isPro.value) {
++      return;
++    }
++
++    _loading = true;
++    AdSize? size;
++    try {
++      size = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(_screenWidthDp);
++    } catch (_) {
++      size = null; // fall back to the standard banner below
++    }
++    _loading = false;
++    if (!mounted || _ad != null || ProService.isPro.value) return;
+ 
+     final ad = BannerAd(
+       adUnitId: AdService.bannerUnitId,
+-      size: AdSize.banner,
++      size: size ?? AdSize.banner,
+       request: const AdRequest(),
+       listener: BannerAdListener(
+         onAdLoaded: (_) {
++          _failures = 0;
+           if (mounted) setState(() => _loaded = true);
+         },
+         onAdFailedToLoad: (ad, error) {
+           ad.dispose();
++          _failures++;
+           if (mounted) {
+             setState(() {
+               _ad = null;
+               _loaded = false;
+             });
+           }
++          _scheduleRetry();
+         },
+       ),
+     );
+@@ -60,6 +94,14 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
+     ad.load();
+   }
+ 
++  /// 30s, 60s, 120s, ... capped at 5 minutes, and gives up after [_maxRetries].
++  void _scheduleRetry() {
++    if (!mounted || ProService.isPro.value || _failures > _maxRetries) return;
++    final seconds = math.min(30 * (1 << (_failures - 1)), 300);
++    _retryTimer?.cancel();
++    _retryTimer = Timer(Duration(seconds: seconds), _maybeLoad);
++  }
++
+   void _disposeAd() {
+     _ad?.dispose();
+     _ad = null;
+@@ -68,6 +110,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
+ 
+   @override
+   void dispose() {
++    _retryTimer?.cancel();
+     AdService.adsReady.removeListener(_maybeLoad);
+     ProService.isPro.removeListener(_onProChanged);
+     _ad?.dispose();

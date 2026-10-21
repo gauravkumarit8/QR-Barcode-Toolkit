@@ -42,7 +42,14 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Local `flutter build --release` has no key.properties; fall back
+            // to the debug key so it still builds. Play rejects debug-signed
+            // uploads, and CI fails before this point if secrets are missing.
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

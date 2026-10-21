@@ -7,6 +7,11 @@ import 'pro_service.dart';
 /// Persists scan/generate history locally (SharedPreferences-backed).
 /// No network calls — everything stays on-device, matching the app's
 /// offline-first / no-data-collected Play Store Data Safety declaration.
+///
+/// Every read-modify-write goes through one queue ([_serialized]). Without
+/// it, two writes started in the same frame (e.g. several codes captured by
+/// batch mode) both read the same list and the last write silently erased
+/// the others.
 class HistoryService {
   static const _prefsKey = 'history_items_v1';
 
@@ -15,70 +20,122 @@ class HistoryService {
   static final ValueNotifier<int> changes = ValueNotifier(0);
 
   /// Free tier item cap — Pro removes this limit.
-  /// Not enforced for Pro users.
+  /// Favorites count toward the cap but are never dropped by it: only
+  /// non-favorites are removed (oldest first).
   static const int freeTierLimit = 50;
 
-  Future<List<HistoryItem>> getAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_prefsKey) ?? [];
-    final items = raw
-        .map((s) => HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>))
-        .toList();
-    // Newest first
-    items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return items;
+  static Future<void> _queue = Future<void>.value();
+
+  /// Runs [action] only after every previously queued action has finished.
+  /// A failed action does not block the ones after it.
+  static Future<T> _serialized<T>(Future<T> Function() action) {
+    final result = _queue.then((_) => action());
+    _queue = result.then<void>((_) {}, onError: (_) {});
+    return result;
   }
 
-  Future<void> add(HistoryItem item) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_prefsKey) ?? [];
-    raw.add(jsonEncode(item.toJson()));
+  /// Pure add logic (no storage), so it can be unit tested.
+  ///
+  /// - An existing entry with the same type and value is replaced, so
+  ///   scanning the same code again moves it to the top instead of filling
+  ///   the list with copies. It keeps its favorite flag.
+  /// - Over the free cap, the oldest NON-favorite entries are dropped. The
+  ///   entry being added is never dropped.
+  @visibleForTesting
+  static List<HistoryItem> withAdded(
+    List<HistoryItem> existing,
+    HistoryItem item, {
+    required bool isPro,
+    int limit = freeTierLimit,
+  }) {
+    final list = [...existing];
+    var toAdd = item;
 
-    // Enforce free-tier cap by dropping the oldest entries once over limit.
-    if (!ProService.isPro.value && raw.length > freeTierLimit) {
-      final items = raw
-          .map((s) => HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      final trimmed = items.skip(items.length - freeTierLimit).toList();
-      await prefs.setStringList(
-        _prefsKey,
-        trimmed.map((i) => jsonEncode(i.toJson())).toList(),
-      );
-      changes.value++;
-      return;
+    final dup = list.indexWhere((i) => i.type == item.type && i.value == item.value);
+    if (dup != -1) {
+      toAdd = item.copyWith(favorite: list[dup].favorite);
+      list.removeAt(dup);
     }
+    list.add(toAdd);
 
-    await prefs.setStringList(_prefsKey, raw);
-    changes.value++;
+    var excess = list.length - limit;
+    if (!isPro && excess > 0) {
+      list.sort((a, b) => a.timestamp.compareTo(b.timestamp)); // oldest first
+      final dropIds = <String>{};
+      for (final i in list) {
+        if (excess == 0) break;
+        if (i.favorite || i.id == toAdd.id) continue;
+        dropIds.add(i.id);
+        excess--;
+      }
+      list.removeWhere((i) => dropIds.contains(i.id));
+    }
+    return list;
   }
 
-  Future<void> setFavorite(String id, bool favorite) async {
+  Future<List<HistoryItem>> _read() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_prefsKey) ?? [];
-    final updated = raw.map((s) {
-      final item = HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>);
-      if (item.id != id) return s;
-      return jsonEncode(item.copyWith(favorite: favorite).toJson());
-    }).toList();
-    await prefs.setStringList(_prefsKey, updated);
-    changes.value++;
+    final raw = prefs.getStringList(_prefsKey) ?? const <String>[];
+    final out = <HistoryItem>[];
+    for (final s in raw) {
+      try {
+        out.add(HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>));
+      } catch (_) {
+        // Skip one corrupt entry instead of losing the whole history.
+      }
+    }
+    return out;
   }
 
-  Future<void> delete(String id) async {
+  Future<void> _write(List<HistoryItem> items) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_prefsKey) ?? [];
-    final filtered = raw.where((s) {
-      final item = HistoryItem.fromJson(jsonDecode(s) as Map<String, dynamic>);
-      return item.id != id;
-    }).toList();
-    await prefs.setStringList(_prefsKey, filtered);
-    changes.value++;
+    await prefs.setStringList(
+      _prefsKey,
+      items.map((i) => jsonEncode(i.toJson())).toList(),
+    );
   }
 
-  Future<void> clear() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
-    changes.value++;
+  Future<List<HistoryItem>> getAll() {
+    return _serialized(() async {
+      final items = await _read();
+      // Newest first
+      items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return items;
+    });
+  }
+
+  Future<void> add(HistoryItem item) {
+    return _serialized(() async {
+      final items = await _read();
+      await _write(withAdded(items, item, isPro: ProService.isPro.value));
+      changes.value++;
+    });
+  }
+
+  Future<void> setFavorite(String id, bool favorite) {
+    return _serialized(() async {
+      final items = await _read();
+      final updated = [
+        for (final i in items) i.id == id ? i.copyWith(favorite: favorite) : i,
+      ];
+      await _write(updated);
+      changes.value++;
+    });
+  }
+
+  Future<void> delete(String id) {
+    return _serialized(() async {
+      final items = await _read();
+      await _write(items.where((i) => i.id != id).toList());
+      changes.value++;
+    });
+  }
+
+  Future<void> clear() {
+    return _serialized(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefsKey);
+      changes.value++;
+    });
   }
 }

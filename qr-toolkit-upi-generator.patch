@@ -1,0 +1,402 @@
+diff --git a/lib/screens/generate_screen.dart b/lib/screens/generate_screen.dart
+index a34cbf8..4605735 100644
+--- a/lib/screens/generate_screen.dart
++++ b/lib/screens/generate_screen.dart
+@@ -9,8 +9,10 @@ import 'package:gal/gal.dart';
+ import 'package:share_plus/share_plus.dart';
+ import '../models/history_item.dart';
+ import '../services/history_service.dart';
++import '../utils/scan_content.dart';
++import '../utils/upi_link.dart';
+ 
+-enum _GenType { text, url, wifi, phone, barcode }
++enum _GenType { text, url, wifi, phone, upi, barcode }
+ 
+ enum _WifiEncryption { wpa, wep, none }
+ 
+@@ -37,6 +39,10 @@ class _GenerateScreenState extends State<GenerateScreen> {
+   final _ssidController = TextEditingController();
+   final _passwordController = TextEditingController();
+   final _barcodeValueController = TextEditingController();
++  final _upiIdController = TextEditingController();
++  final _upiNameController = TextEditingController();
++  final _upiAmountController = TextEditingController();
++  final _upiNoteController = TextEditingController();
+ 
+   _WifiEncryption _wifiEncryption = _WifiEncryption.wpa;
+   _BarcodeFormat _barcodeFormat = _BarcodeFormat.code128;
+@@ -58,15 +64,36 @@ class _GenerateScreenState extends State<GenerateScreen> {
+     _ssidController.dispose();
+     _passwordController.dispose();
+     _barcodeValueController.dispose();
++    _upiIdController.dispose();
++    _upiNameController.dispose();
++    _upiAmountController.dispose();
++    _upiNoteController.dispose();
+     super.dispose();
+   }
+ 
+   void _onRegeneratePrefill() {
+     final value = widget.regeneratePrefill.value;
+     if (value == null) return;
++    // A UPI pay link goes back into the UPI form. A "collect" request does
++    // not: this generator only makes pay links, so it stays as plain text.
++    final scanned = ScanContent.parse(value).payment;
++    final upi = (scanned != null &&
++            scanned.scheme == 'upi' &&
++            !scanned.isCollectRequest &&
++            scanned.payeeId != null)
++        ? scanned
++        : null;
+     setState(() {
+-      _selected = _GenType.text;
+-      _textController.text = value;
++      if (upi != null) {
++        _selected = _GenType.upi;
++        _upiIdController.text = upi.payeeId!;
++        _upiNameController.text = upi.payeeName ?? '';
++        _upiAmountController.text = upi.amount ?? '';
++        _upiNoteController.text = upi.note ?? '';
++      } else {
++        _selected = _GenType.text;
++        _textController.text = value;
++      }
+     });
+     widget.regeneratePrefill.value = null;
+   }
+@@ -90,6 +117,14 @@ class _GenerateScreenState extends State<GenerateScreen> {
+             ? ''
+             : 'P:${_escapeWifi(_passwordController.text)};';
+         return 'WIFI:T:$enc;S:${_escapeWifi(_ssidController.text)};${password}H:false;;';
++      case _GenType.upi:
++        return UpiLink.build(
++              vpa: _upiIdController.text,
++              name: _upiNameController.text,
++              amount: _upiAmountController.text,
++              note: _upiNoteController.text,
++            ) ??
++            '';
+       case _GenType.barcode:
+         return _barcodeValueController.text;
+     }
+@@ -375,6 +410,66 @@ class _GenerateScreenState extends State<GenerateScreen> {
+             ),
+           ],
+         );
++      case _GenType.upi:
++        return Column(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            TextField(
++              controller: _upiIdController,
++              keyboardType: TextInputType.emailAddress,
++              autocorrect: false,
++              enableSuggestions: false,
++              decoration: InputDecoration(
++                border: const OutlineInputBorder(),
++                labelText: 'UPI ID',
++                hintText: 'name@bank',
++                errorText: UpiLink.vpaError(_upiIdController.text),
++              ),
++              onChanged: (_) => setState(() {}),
++            ),
++            const SizedBox(height: 12),
++            TextField(
++              controller: _upiNameController,
++              maxLength: UpiLink.nameMax,
++              textCapitalization: TextCapitalization.words,
++              decoration: const InputDecoration(
++                border: OutlineInputBorder(),
++                labelText: 'Payee name (optional)',
++              ),
++              onChanged: (_) => setState(() {}),
++            ),
++            const SizedBox(height: 4),
++            TextField(
++              controller: _upiAmountController,
++              keyboardType: const TextInputType.numberWithOptions(decimal: true),
++              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
++              decoration: InputDecoration(
++                border: const OutlineInputBorder(),
++                labelText: 'Amount in \u20B9 (optional)',
++                helperText: 'Leave empty to let the payer enter it',
++                errorText: UpiLink.amountError(_upiAmountController.text),
++              ),
++              onChanged: (_) => setState(() {}),
++            ),
++            const SizedBox(height: 12),
++            TextField(
++              controller: _upiNoteController,
++              maxLength: UpiLink.noteMax,
++              decoration: const InputDecoration(
++                border: OutlineInputBorder(),
++                labelText: 'Note (optional)',
++              ),
++              onChanged: (_) => setState(() {}),
++            ),
++            Text(
++              'Anyone who scans this code pays this UPI ID, so check it '
++              'carefully. Test the code with your own UPI app before you print it.',
++              style: Theme.of(context).textTheme.bodySmall?.copyWith(
++                    color: Theme.of(context).colorScheme.outline,
++                  ),
++            ),
++          ],
++        );
+       case _GenType.barcode:
+         return Column(
+           children: [
+@@ -419,6 +514,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
+         return 'WiFi';
+       case _GenType.phone:
+         return 'Phone';
++      case _GenType.upi:
++        return 'UPI';
+       case _GenType.barcode:
+         return 'Barcode';
+     }
+diff --git a/lib/utils/upi_link.dart b/lib/utils/upi_link.dart
+new file mode 100644
+index 0000000..008cbfd
+--- /dev/null
++++ b/lib/utils/upi_link.dart
+@@ -0,0 +1,92 @@
++/// Builds `upi://pay` payment links (for the UPI QR generator).
++///
++/// Pure Dart (no Flutter) so it can be unit tested. The output is read back
++/// by `ScanContent.parse`, and the tests check that round trip.
++///
++/// The link format is the common UPI deep link:
++///   upi://pay?pa=<UPI ID>&pn=<name>&am=<amount>&cu=INR&tn=<note>
++/// Only `pa` is required. The amount is optional; when it is left out the
++/// payer types it in their UPI app.
++class UpiLink {
++  /// Conservative length caps. Some UPI apps cut off or reject long values.
++  static const int nameMax = 50;
++  static const int noteMax = 50;
++
++  /// UPI ID (VPA) such as `shop@okbank` or `9876543210@ybl`.
++  /// Deliberately lenient: it rejects obvious typos (spaces, no `@`, missing
++  /// bank handle) without refusing real IDs from banks we don't know about.
++  static final RegExp _vpa =
++      RegExp(r'^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\-]{1,63}$');
++
++  /// Up to 7 digits and at most 2 decimals. A trailing "." is allowed while
++  /// the user is still typing and is removed on output.
++  static final RegExp _amount = RegExp(r'^\d{1,7}(\.\d{0,2})?$');
++
++  static bool isValidVpa(String value) => _vpa.hasMatch(value.trim());
++
++  /// Returns:
++  ///  - `''`  when [raw] is empty (no amount; the payer chooses),
++  ///  - the cleaned amount (e.g. `"499"`, `"10.5"`) when valid,
++  ///  - `null` when invalid (not a positive number with at most 2 decimals).
++  static String? normalizeAmount(String raw) {
++    final v = raw.trim();
++    if (v.isEmpty) return '';
++    if (!_amount.hasMatch(v)) return null;
++    final clean = v.endsWith('.') ? v.substring(0, v.length - 1) : v;
++    final n = double.tryParse(clean);
++    if (n == null || n <= 0) return null;
++    return clean;
++  }
++
++  /// Message for the UPI ID field, or null when it is empty or valid.
++  static String? vpaError(String value) {
++    if (value.trim().isEmpty || isValidVpa(value)) return null;
++    return 'Enter a UPI ID like name@bank';
++  }
++
++  /// Message for the amount field, or null when it is empty or valid.
++  static String? amountError(String value) {
++    return normalizeAmount(value) == null
++        ? 'Enter an amount like 499 or 499.50'
++        : null;
++  }
++
++  /// Returns the payment link, or null when the UPI ID or amount is invalid.
++  static String? build({
++    required String vpa,
++    String name = '',
++    String amount = '',
++    String note = '',
++  }) {
++    final id = vpa.trim();
++    if (!isValidVpa(id)) return null;
++    final am = normalizeAmount(amount);
++    if (am == null) return null;
++
++    final pn = _clip(_tidy(name), nameMax);
++    final tn = _clip(_tidy(note), noteMax);
++
++    // '@' is left readable in the UPI ID; apps expect "pa=name@bank".
++    final b = StringBuffer('upi://pay?pa=${_encodeVpa(id)}');
++    if (pn.isNotEmpty) b.write('&pn=${Uri.encodeComponent(pn)}');
++    if (am.isNotEmpty) b.write('&am=$am');
++    b.write('&cu=INR');
++    if (tn.isNotEmpty) b.write('&tn=${Uri.encodeComponent(tn)}');
++    return b.toString();
++  }
++
++  static String _encodeVpa(String id) =>
++      Uri.encodeComponent(id).replaceAll('%40', '@');
++
++  /// Trims, turns control characters into spaces, and collapses whitespace.
++  static String _tidy(String s) => s
++      .replaceAll(RegExp(r'[\u0000-\u001F\u007F]'), ' ')
++      .replaceAll(RegExp(r'\s+'), ' ')
++      .trim();
++
++  /// Cuts to [max] characters (whole code points, so emoji aren't split).
++  static String _clip(String s, int max) {
++    final runes = s.runes;
++    return runes.length <= max ? s : String.fromCharCodes(runes.take(max));
++  }
++}
+diff --git a/test/upi_link_test.dart b/test/upi_link_test.dart
+new file mode 100644
+index 0000000..e2ccbd0
+--- /dev/null
++++ b/test/upi_link_test.dart
+@@ -0,0 +1,141 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:qr_barcode_toolkit/utils/scan_content.dart';
++import 'package:qr_barcode_toolkit/utils/upi_link.dart';
++
++void main() {
++  group('UpiLink.isValidVpa', () {
++    test('accepts normal UPI IDs', () {
++      for (final v in [
++        'name@oksbi',
++        'john.doe-1@ybl',
++        'a_b@paytm',
++        '9876543210@ybl',
++        '  shop@okbank  ', // surrounding spaces are ignored
++      ]) {
++        expect(UpiLink.isValidVpa(v), isTrue, reason: v);
++      }
++    });
++
++    test('rejects typos and incomplete IDs', () {
++      for (final v in [
++        '',
++        'nobank',
++        'name@',
++        '@bank',
++        'a@b', // bank handle too short
++        'x@bank', // name part too short
++        'two words@bank',
++        'name@bank@extra',
++        'na me@bank',
++      ]) {
++        expect(UpiLink.isValidVpa(v), isFalse, reason: v);
++      }
++    });
++  });
++
++  group('UpiLink.normalizeAmount', () {
++    test('empty means "no amount"', () {
++      expect(UpiLink.normalizeAmount(''), '');
++      expect(UpiLink.normalizeAmount('   '), '');
++    });
++
++    test('valid amounts', () {
++      expect(UpiLink.normalizeAmount('499'), '499');
++      expect(UpiLink.normalizeAmount(' 499 '), '499');
++      expect(UpiLink.normalizeAmount('10.5'), '10.5');
++      expect(UpiLink.normalizeAmount('10.50'), '10.50');
++      expect(UpiLink.normalizeAmount('10.'), '10'); // still typing
++      expect(UpiLink.normalizeAmount('1234567.89'), '1234567.89');
++    });
++
++    test('invalid amounts', () {
++      for (final v in ['0', '0.00', '1.234', 'abc', '-5', '1,000', '.5', '12345678']) {
++        expect(UpiLink.normalizeAmount(v), isNull, reason: v);
++      }
++    });
++
++    test('field error messages', () {
++      expect(UpiLink.amountError(''), isNull);
++      expect(UpiLink.amountError('499'), isNull);
++      expect(UpiLink.amountError('abc'), isNotNull);
++      expect(UpiLink.vpaError(''), isNull); // empty is not an error yet
++      expect(UpiLink.vpaError('shop@okbank'), isNull);
++      expect(UpiLink.vpaError('nobank'), isNotNull);
++    });
++  });
++
++  group('UpiLink.build', () {
++    test('minimal link', () {
++      expect(UpiLink.build(vpa: 'shop@okbank'), 'upi://pay?pa=shop@okbank&cu=INR');
++    });
++
++    test('all fields, in a stable order, with the UPI ID readable', () {
++      final link = UpiLink.build(
++        vpa: 'shop@okbank',
++        name: 'Shop Name',
++        amount: '499',
++        note: 'Order 42',
++      );
++      expect(
++        link,
++        'upi://pay?pa=shop@okbank&pn=Shop%20Name&am=499&cu=INR&tn=Order%2042',
++      );
++      expect(link, isNot(contains('%40')));
++    });
++
++    test('returns null for an invalid UPI ID or amount', () {
++      expect(UpiLink.build(vpa: ''), isNull);
++      expect(UpiLink.build(vpa: 'nobank'), isNull);
++      expect(UpiLink.build(vpa: 'shop@okbank', amount: 'abc'), isNull);
++      expect(UpiLink.build(vpa: 'shop@okbank', amount: '0'), isNull);
++    });
++
++    test('whitespace is tidied and a trailing dot in the amount is dropped', () {
++      final link = UpiLink.build(
++        vpa: ' shop@okbank ',
++        name: '  Shop \n  Name ',
++        amount: '10.',
++      );
++      expect(link, 'upi://pay?pa=shop@okbank&pn=Shop%20Name&am=10&cu=INR');
++    });
++
++    test('long name and note are cut to the limits', () {
++      final link = UpiLink.build(
++        vpa: 'shop@okbank',
++        name: 'a' * 60,
++        note: 'b' * 80,
++      )!;
++      final p = ScanContent.parse(link).payment!;
++      expect(p.payeeName!.length, UpiLink.nameMax);
++      expect(p.note!.length, UpiLink.noteMax);
++    });
++  });
++
++  group('Round trip: generator output is read correctly by the scanner', () {
++    test('special characters survive', () {
++      final link = UpiLink.build(
++        vpa: 'ravi.k@oksbi',
++        name: 'Ravi & Sons',
++        amount: '1250.50',
++        note: 'Order #42 \u2013 thanks',
++      )!;
++      final c = ScanContent.parse(link);
++      expect(c.kind, ScanKind.payment);
++      final p = c.payment!;
++      expect(p.scheme, 'upi');
++      expect(p.payeeId, 'ravi.k@oksbi');
++      expect(p.payeeName, 'Ravi & Sons');
++      expect(p.amount, '1250.50');
++      expect(p.currency, 'INR');
++      expect(p.note, 'Order #42 \u2013 thanks');
++      expect(p.isCollectRequest, isFalse);
++    });
++
++    test('a link with no amount scans as a payment with no amount', () {
++      final p = ScanContent.parse(UpiLink.build(vpa: 'shop@okbank')!).payment!;
++      expect(p.payeeId, 'shop@okbank');
++      expect(p.amount, isNull);
++      expect(p.amountLabel, isNull);
++    });
++  });
++}

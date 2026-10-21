@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ad_service.dart';
@@ -6,6 +8,10 @@ import '../services/pro_service.dart';
 /// Single banner shown above the bottom navigation on every tab.
 /// Renders nothing for Pro users, before consent is resolved, or if the ad
 /// fails to load — so it never leaves an empty gap or blocks the UI.
+///
+/// Uses an anchored adaptive banner (sized to the screen width) and retries a
+/// failed load with exponential backoff, so one "no fill" doesn't mean no ads
+/// for the rest of the session.
 class BannerAdWidget extends StatefulWidget {
   const BannerAdWidget({super.key});
 
@@ -14,8 +20,13 @@ class BannerAdWidget extends StatefulWidget {
 }
 
 class _BannerAdWidgetState extends State<BannerAdWidget> {
+  static const _maxRetries = 6;
+
   BannerAd? _ad;
   bool _loaded = false;
+  bool _loading = false; // true while the adaptive size is being resolved
+  int _failures = 0;
+  Timer? _retryTimer;
 
   @override
   void initState() {
@@ -27,6 +38,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   void _onProChanged() {
     if (ProService.isPro.value) {
+      _retryTimer?.cancel();
       _disposeAd();
       if (mounted) setState(() {});
     } else {
@@ -34,30 +46,60 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     }
   }
 
-  void _maybeLoad() {
-    if (_ad != null || !AdService.adsReady.value || ProService.isPro.value) return;
+  /// Screen width in logical pixels. Read from the platform dispatcher so it
+  /// works from initState (no BuildContext / MediaQuery needed).
+  int get _screenWidthDp {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    return (view.physicalSize.width / view.devicePixelRatio).truncate();
+  }
+
+  Future<void> _maybeLoad() async {
+    if (_ad != null || _loading || !AdService.adsReady.value || ProService.isPro.value) {
+      return;
+    }
+
+    _loading = true;
+    AdSize? size;
+    try {
+      size = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(_screenWidthDp);
+    } catch (_) {
+      size = null; // fall back to the standard banner below
+    }
+    _loading = false;
+    if (!mounted || _ad != null || ProService.isPro.value) return;
 
     final ad = BannerAd(
       adUnitId: AdService.bannerUnitId,
-      size: AdSize.banner,
+      size: size ?? AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
+          _failures = 0;
           if (mounted) setState(() => _loaded = true);
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
+          _failures++;
           if (mounted) {
             setState(() {
               _ad = null;
               _loaded = false;
             });
           }
+          _scheduleRetry();
         },
       ),
     );
     _ad = ad;
     ad.load();
+  }
+
+  /// 30s, 60s, 120s, ... capped at 5 minutes, and gives up after [_maxRetries].
+  void _scheduleRetry() {
+    if (!mounted || ProService.isPro.value || _failures > _maxRetries) return;
+    final seconds = math.min(30 * (1 << (_failures - 1)), 300);
+    _retryTimer?.cancel();
+    _retryTimer = Timer(Duration(seconds: seconds), _maybeLoad);
   }
 
   void _disposeAd() {
@@ -68,6 +110,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     AdService.adsReady.removeListener(_maybeLoad);
     ProService.isPro.removeListener(_onProChanged);
     _ad?.dispose();
