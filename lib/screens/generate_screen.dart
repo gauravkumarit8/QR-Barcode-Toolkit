@@ -11,10 +11,12 @@ import '../models/history_item.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
+import '../utils/scan_content.dart';
 import '../utils/svg_export.dart';
+import '../utils/upi_link.dart';
 import '../widgets/pro_gate.dart';
 
-enum _GenType { text, url, wifi, phone, barcode }
+enum _GenType { text, url, wifi, phone, upi, barcode }
 
 enum _WifiEncryption { wpa, wep, none }
 
