@@ -41,6 +41,10 @@ class _GenerateScreenState extends State<GenerateScreen> {
   final _ssidController = TextEditingController();
   final _passwordController = TextEditingController();
   final _barcodeValueController = TextEditingController();
+  final _upiIdController = TextEditingController();
+  final _upiNameController = TextEditingController();
+  final _upiAmountController = TextEditingController();
+  final _upiNoteController = TextEditingController();
 
   _WifiEncryption _wifiEncryption = _WifiEncryption.wpa;
   _BarcodeFormat _barcodeFormat = _BarcodeFormat.code128;
@@ -62,15 +66,36 @@ class _GenerateScreenState extends State<GenerateScreen> {
     _ssidController.dispose();
     _passwordController.dispose();
     _barcodeValueController.dispose();
+    _upiIdController.dispose();
+    _upiNameController.dispose();
+    _upiAmountController.dispose();
+    _upiNoteController.dispose();
     super.dispose();
   }
 
   void _onRegeneratePrefill() {
     final value = widget.regeneratePrefill.value;
     if (value == null) return;
+    // A UPI pay link goes back into the UPI form. A "collect" request does
+    // not: this generator only makes pay links, so it stays as plain text.
+    final scanned = ScanContent.parse(value).payment;
+    final upi = (scanned != null &&
+            scanned.scheme == 'upi' &&
+            !scanned.isCollectRequest &&
+            scanned.payeeId != null)
+        ? scanned
+        : null;
     setState(() {
-      _selected = _GenType.text;
-      _textController.text = value;
+      if (upi != null) {
+        _selected = _GenType.upi;
+        _upiIdController.text = upi.payeeId!;
+        _upiNameController.text = upi.payeeName ?? '';
+        _upiAmountController.text = upi.amount ?? '';
+        _upiNoteController.text = upi.note ?? '';
+      } else {
+        _selected = _GenType.text;
+        _textController.text = value;
+      }
     });
     widget.regeneratePrefill.value = null;
   }
@@ -94,6 +119,14 @@ class _GenerateScreenState extends State<GenerateScreen> {
             ? ''
             : 'P:${_escapeWifi(_passwordController.text)};';
         return 'WIFI:T:$enc;S:${_escapeWifi(_ssidController.text)};${password}H:false;;';
+      case _GenType.upi:
+        return UpiLink.build(
+              vpa: _upiIdController.text,
+              name: _upiNameController.text,
+              amount: _upiAmountController.text,
+              note: _upiNoteController.text,
+            ) ??
+            '';
       case _GenType.barcode:
         return _barcodeValueController.text;
     }
@@ -503,6 +536,66 @@ class _GenerateScreenState extends State<GenerateScreen> {
             ),
           ],
         );
+      case _GenType.upi:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _upiIdController,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'UPI ID',
+                hintText: 'name@bank',
+                errorText: UpiLink.vpaError(_upiIdController.text),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _upiNameController,
+              maxLength: UpiLink.nameMax,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Payee name (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 4),
+            TextField(
+              controller: _upiAmountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'Amount in \u20B9 (optional)',
+                helperText: 'Leave empty to let the payer enter it',
+                errorText: UpiLink.amountError(_upiAmountController.text),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _upiNoteController,
+              maxLength: UpiLink.noteMax,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Note (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            Text(
+              'Anyone who scans this code pays this UPI ID, so check it '
+              'carefully. Test the code with your own UPI app before you print it.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
+          ],
+        );
       case _GenType.barcode:
         return Column(
           children: [
@@ -547,6 +640,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
         return 'WiFi';
       case _GenType.phone:
         return 'Phone';
+      case _GenType.upi:
+        return 'UPI';
       case _GenType.barcode:
         return 'Barcode';
     }
