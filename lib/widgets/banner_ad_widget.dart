@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import '../services/ad_pacing.dart';
 import '../services/ad_service.dart';
 import '../services/pro_service.dart';
 
@@ -13,7 +14,12 @@ import '../services/pro_service.dart';
 /// failed load with exponential backoff, so one "no fill" doesn't mean no ads
 /// for the rest of the session.
 class BannerAdWidget extends StatefulWidget {
-  const BannerAdWidget({super.key});
+  /// When false the banner is not drawn (used for the Scan tab, where an ad
+  /// would sit next to the camera). The loaded ad is kept, so switching tabs
+  /// does not trigger a new ad request every time.
+  final bool visible;
+
+  const BannerAdWidget({super.key, this.visible = true});
 
   @override
   State<BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -54,7 +60,11 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   }
 
   Future<void> _maybeLoad() async {
-    if (_ad != null || _loading || !AdService.adsReady.value || ProService.isPro.value) {
+    if (_ad != null ||
+        _loading ||
+        !AdService.adsReady.value ||
+        ProService.isPro.value ||
+        !AdPacing.passiveAdsAllowed) {
       return;
     }
 
@@ -120,7 +130,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   @override
   Widget build(BuildContext context) {
     final ad = _ad;
-    if (ad == null || !_loaded || ProService.isPro.value) {
+    if (!widget.visible || ad == null || !_loaded || ProService.isPro.value) {
       return const SizedBox.shrink();
     }
     // Padding keeps the ad clear of the content above and the nav bar below,

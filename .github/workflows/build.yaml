@@ -65,8 +65,8 @@ jobs:
         run: |
           if grep -q "useTestAds = true" lib/services/ad_service.dart; then
             echo "::warning::AdService.useTestAds is still true - this build shows Google TEST ads (fine for internal testing, NOT for production)."
-          elif grep -q "REPLACE_WITH_YOUR_BANNER_AD_UNIT_ID" lib/services/ad_service.dart; then
-            echo "::error::useTestAds is false but the banner ad unit ID is still the placeholder."
+          elif grep -q "REPLACE_WITH_YOUR_" lib/services/ad_service.dart; then
+            echo "::error::useTestAds is false but a banner, rewarded or native ad unit ID is still a placeholder."
             exit 1
           fi
           if grep -rq "3940256099942544~3347511713" android/app/src/main/AndroidManifest.xml; then

@@ -1,9 +1,11 @@
+import 'contact_card.dart';
+
 /// What kind of thing a scanned code contains, so the result card can offer
 /// the one action that makes sense (call, email, open a map, copy the Wi-Fi
 /// password...) instead of a generic "Search online" for everything.
 ///
 /// Pure Dart, no Flutter imports, so it is easy to unit test.
-enum ScanKind { url, wifi, phone, email, sms, geo, product, payment, text }
+enum ScanKind { url, wifi, phone, email, sms, geo, product, payment, contact, event, text }
 
 class WifiInfo {
   final String ssid;
@@ -78,7 +80,21 @@ class ScanContent {
   /// Set for payment.
   final PaymentInfo? payment;
 
-  const ScanContent._(this.kind, this.raw, {this.uri, this.wifi, this.payment});
+  /// Set for contact (vCard / MECARD).
+  final ContactInfo? contact;
+
+  /// Set for event (calendar VEVENT).
+  final EventInfo? event;
+
+  const ScanContent._(
+    this.kind,
+    this.raw, {
+    this.uri,
+    this.wifi,
+    this.payment,
+    this.contact,
+    this.event,
+  });
 
   /// [isProductBarcode] should be true for numeric EAN/UPC retail barcodes —
   /// the caller knows the barcode format, this parser only sees the text.
@@ -100,6 +116,16 @@ class ScanContent {
     }
     final emv = _parseEmv(value);
     if (emv != null) return ScanContent._(ScanKind.payment, raw, payment: emv);
+
+    if (lower.startsWith('begin:vcard') || lower.startsWith('mecard:')) {
+      final contact = ContactInfo.parse(value);
+      if (contact != null) return ScanContent._(ScanKind.contact, raw, contact: contact);
+    }
+
+    if (lower.startsWith('begin:vcalendar') || lower.startsWith('begin:vevent')) {
+      final event = EventInfo.parse(value);
+      if (event != null) return ScanContent._(ScanKind.event, raw, event: event);
+    }
 
     if (lower.startsWith('tel:')) {
       final uri = Uri.tryParse(value);

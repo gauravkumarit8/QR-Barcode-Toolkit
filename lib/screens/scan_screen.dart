@@ -12,7 +12,7 @@ import '../main.dart'
 import '../models/history_item.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
-import '../services/pro_service.dart';
+import '../utils/contact_card.dart';
 import '../utils/csv_builder.dart';
 import '../utils/scan_content.dart';
 import '../widgets/pro_gate.dart';
@@ -562,10 +562,8 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _exportBatchCsv(BuildContext sheetContext) async {
-    if (!ProService.isPro.value) {
-      await showProRequired(sheetContext, feature: 'Export to CSV');
-      return;
-    }
+    if (!await unlockOrWatchAd(sheetContext, feature: 'Export to CSV')) return;
+    if (!mounted) return;
     final rows = [
       for (final e in _batch)
         [
@@ -673,8 +671,44 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         if (payUri == null) return null; // e.g. a merchant QR with no app link
         return _Action('Open payment app', Icons.payments_outlined,
             () => confirmAndOpenPayment(context, payUri, c.payment!));
+      case ScanKind.contact:
+        return _Action('Save contact', Icons.person_add_alt_1_outlined,
+            () => _saveContact(c.contact!));
+      case ScanKind.event:
+        return _Action(
+            'Add to calendar', Icons.event_outlined, () => _addToCalendar(c.event!));
       case ScanKind.text:
         return _Action('Search online', Icons.search, _searchOnline);
+    }
+  }
+
+  /// Shares the card as a .vcf file; choosing Contacts in the share sheet
+  /// opens the phone's own "add contact" screen.
+  Future<void> _saveContact(ContactInfo contact) async {
+    try {
+      await ExportService.shareTextFile(
+        contact.toVCard(),
+        baseName: 'contact',
+        extension: 'vcf',
+        mimeType: 'text/vcard',
+      );
+    } catch (_) {
+      _snack('Could not create the contact file');
+    }
+  }
+
+  /// Shares the event as a .ics file; choosing Calendar in the share sheet
+  /// opens the phone's own "add event" screen.
+  Future<void> _addToCalendar(EventInfo event) async {
+    try {
+      await ExportService.shareTextFile(
+        event.toIcs(),
+        baseName: 'event',
+        extension: 'ics',
+        mimeType: 'text/calendar',
+      );
+    } catch (_) {
+      _snack('Could not create the calendar file');
     }
   }
 
@@ -687,6 +721,8 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         ScanKind.geo => 'Location',
         ScanKind.product => 'Product barcode',
         ScanKind.payment => 'Payment code',
+        ScanKind.contact => 'Contact',
+        ScanKind.event => 'Calendar event',
         ScanKind.text => 'Text',
       };
 
@@ -1092,6 +1128,47 @@ class _ResultPanel extends StatelessWidget {
           const Text('Check that this name and ID are who you mean to pay.'),
           const SizedBox(height: 10),
           WarningBox(messages: [pay.warning]),
+        ],
+      );
+    }
+    final contact = content.contact;
+    if (content.kind == ScanKind.contact && contact != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            contact.displayName,
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          if (contact.title != null || contact.organization != null)
+            Text([contact.title, contact.organization].whereType<String>().join(', ')),
+          for (final p in contact.phones.take(3)) SelectableText('Phone: $p'),
+          for (final e in contact.emails.take(3)) SelectableText('Email: $e'),
+          // Links from a card are shown as text only, never opened from here.
+          for (final u in contact.urls.take(2)) SelectableText(u),
+          if (contact.address != null) Text(contact.address!),
+        ],
+      );
+    }
+    final event = content.event;
+    if (content.kind == ScanKind.event && event != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            event.title ?? 'Event',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          Text(event.whenLabel),
+          if (event.location != null) Text(event.location!),
+          if (event.description != null)
+            Text(event.description!, maxLines: 4, overflow: TextOverflow.ellipsis),
         ],
       );
     }

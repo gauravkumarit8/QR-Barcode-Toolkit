@@ -11,12 +11,13 @@ import '../models/history_item.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
+import '../utils/code_payloads.dart';
 import '../utils/scan_content.dart';
 import '../utils/svg_export.dart';
 import '../utils/upi_link.dart';
 import '../widgets/pro_gate.dart';
 
-enum _GenType { text, url, wifi, phone, upi, barcode }
+enum _GenType { text, url, wifi, phone, upi, email, sms, location, contact, barcode }
 
 enum _WifiEncryption { wpa, wep, none }
 
@@ -47,8 +48,20 @@ class _GenerateScreenState extends State<GenerateScreen> {
   final _upiNameController = TextEditingController();
   final _upiAmountController = TextEditingController();
   final _upiNoteController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _emailSubjectController = TextEditingController();
+  final _emailBodyController = TextEditingController();
+  final _smsNumberController = TextEditingController();
+  final _smsMessageController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _contactNameController = TextEditingController();
+  final _contactPhoneController = TextEditingController();
+  final _contactEmailController = TextEditingController();
+  final _contactOrgController = TextEditingController();
+  final _contactWebsiteController = TextEditingController();
 
   _WifiEncryption _wifiEncryption = _WifiEncryption.wpa;
+  bool _wifiHidden = false;
   _BarcodeFormat _barcodeFormat = _BarcodeFormat.code128;
 
   bool _saving = false;
@@ -72,6 +85,17 @@ class _GenerateScreenState extends State<GenerateScreen> {
     _upiNameController.dispose();
     _upiAmountController.dispose();
     _upiNoteController.dispose();
+    _emailController.dispose();
+    _emailSubjectController.dispose();
+    _emailBodyController.dispose();
+    _smsNumberController.dispose();
+    _smsMessageController.dispose();
+    _locationController.dispose();
+    _contactNameController.dispose();
+    _contactPhoneController.dispose();
+    _contactEmailController.dispose();
+    _contactOrgController.dispose();
+    _contactWebsiteController.dispose();
     super.dispose();
   }
 
@@ -107,9 +131,9 @@ class _GenerateScreenState extends State<GenerateScreen> {
       case _GenType.text:
         return _textController.text;
       case _GenType.url:
-        return _urlController.text;
+        return CodePayloads.normalizeUrl(_urlController.text);
       case _GenType.phone:
-        return _phoneController.text.isEmpty ? '' : 'tel:${_phoneController.text}';
+        return CodePayloads.tel(_phoneController.text);
       case _GenType.wifi:
         if (_ssidController.text.isEmpty) return '';
         final enc = switch (_wifiEncryption) {
@@ -120,7 +144,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
         final password = enc == 'nopass'
             ? ''
             : 'P:${_escapeWifi(_passwordController.text)};';
-        return 'WIFI:T:$enc;S:${_escapeWifi(_ssidController.text)};${password}H:false;;';
+        return 'WIFI:T:$enc;S:${_escapeWifi(_ssidController.text)};${password}H:$_wifiHidden;;';
       case _GenType.upi:
         return UpiLink.build(
               vpa: _upiIdController.text,
@@ -129,6 +153,27 @@ class _GenerateScreenState extends State<GenerateScreen> {
               note: _upiNoteController.text,
             ) ??
             '';
+      case _GenType.email:
+        return CodePayloads.mailto(
+          address: _emailController.text,
+          subject: _emailSubjectController.text,
+          body: _emailBodyController.text,
+        );
+      case _GenType.sms:
+        return CodePayloads.smsto(
+          number: _smsNumberController.text,
+          message: _smsMessageController.text,
+        );
+      case _GenType.location:
+        return CodePayloads.geo(_locationController.text);
+      case _GenType.contact:
+        return CodePayloads.contactVCard(
+          name: _contactNameController.text,
+          phone: _contactPhoneController.text,
+          email: _contactEmailController.text,
+          organization: _contactOrgController.text,
+          website: _contactWebsiteController.text,
+        );
       case _GenType.barcode:
         return _barcodeValueController.text;
     }
@@ -302,10 +347,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _saveHighResPng() async {
     if (!_hasData) return;
-    if (!ProService.isPro.value) {
-      await showProRequired(context, feature: 'Print-quality export');
-      return;
-    }
+    if (!await unlockOrWatchAd(context, feature: 'Print-quality export')) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final bytes = await _capturePreviewPng(targetWidth: 2048);
     if (mounted) setState(() => _saving = false);
@@ -327,10 +370,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _exportSvg() async {
     if (!_hasData) return;
-    if (!ProService.isPro.value) {
-      await showProRequired(context, feature: 'Print-quality export');
-      return;
-    }
+    if (!await unlockOrWatchAd(context, feature: 'Print-quality export')) return;
+    if (!mounted) return;
     final String svg;
     try {
       svg = _selected == _GenType.barcode
@@ -382,6 +423,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
         children: [
           Wrap(
             spacing: 8,
+            runSpacing: 4,
             children: _GenType.values.map((type) {
               return ChoiceChip(
                 label: Text(_labelFor(type)),
@@ -499,7 +541,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
             labelText: 'URL',
-            hintText: 'https://example.com',
+            hintText: 'example.com',
+            helperText: 'https:// is added if you leave it out',
           ),
           onChanged: (_) => setState(() {}),
         );
@@ -535,6 +578,13 @@ class _GenerateScreenState extends State<GenerateScreen> {
                 DropdownMenuItem(value: _WifiEncryption.none, child: Text('None')),
               ],
               onChanged: (v) => setState(() => _wifiEncryption = v ?? _wifiEncryption),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Hidden network'),
+              value: _wifiHidden,
+              onChanged: (v) => setState(() => _wifiHidden = v ?? false),
             ),
           ],
         );
@@ -598,6 +648,137 @@ class _GenerateScreenState extends State<GenerateScreen> {
             ),
           ],
         );
+      case _GenType.email:
+        return Column(
+          children: [
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'Email address',
+                errorText: CodePayloads.emailError(_emailController.text),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _emailSubjectController,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Subject (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _emailBodyController,
+              maxLines: 4,
+              minLines: 1,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Message (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        );
+      case _GenType.sms:
+        return Column(
+          children: [
+            TextField(
+              controller: _smsNumberController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Phone number',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _smsMessageController,
+              maxLines: 4,
+              minLines: 1,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Message (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        );
+      case _GenType.location:
+        return TextField(
+          controller: _locationController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            labelText: 'Latitude, longitude',
+            hintText: '48.8584, 2.2945',
+            helperText: 'Paste coordinates copied from a maps app',
+            errorText: CodePayloads.locationError(_locationController.text),
+          ),
+          onChanged: (_) => setState(() {}),
+        );
+      case _GenType.contact:
+        return Column(
+          children: [
+            TextField(
+              controller: _contactNameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Name',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _contactPhoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Phone (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _contactEmailController,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: 'Email (optional)',
+                errorText: CodePayloads.emailError(_contactEmailController.text),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _contactOrgController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Company (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _contactWebsiteController,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Website (optional)',
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        );
       case _GenType.barcode:
         return Column(
           children: [
@@ -644,6 +825,14 @@ class _GenerateScreenState extends State<GenerateScreen> {
         return 'Phone';
       case _GenType.upi:
         return 'UPI';
+      case _GenType.email:
+        return 'Email';
+      case _GenType.sms:
+        return 'SMS';
+      case _GenType.location:
+        return 'Location';
+      case _GenType.contact:
+        return 'Contact';
       case _GenType.barcode:
         return 'Barcode';
     }

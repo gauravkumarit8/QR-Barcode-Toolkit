@@ -3,9 +3,11 @@ import 'screens/scan_screen.dart';
 import 'screens/generate_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/ad_pacing.dart';
 import 'services/ad_service.dart';
 import 'services/pro_service.dart';
 import 'services/purchase_service.dart';
+import 'services/rewarded_ad_service.dart';
 import 'services/settings_service.dart';
 import 'widgets/banner_ad_widget.dart';
 
@@ -31,6 +33,7 @@ void main() async {
   hapticFeedbackNotifier.value = await settings.getHapticFeedback();
   soundFeedbackNotifier.value = await settings.getSoundFeedback();
   await ProService.load();
+  await AdPacing.loadAndCountLaunch();
   PurchaseService.init();
   runApp(const QrBarcodeToolkitApp());
 }
@@ -96,9 +99,14 @@ class _RootShellState extends State<RootShell> {
     ),
   ];
 
+  void _onAdsReady() {
+    if (AdService.adsReady.value) RewardedAdService.preload();
+  }
+
   @override
   void initState() {
     super.initState();
+    AdService.adsReady.addListener(_onAdsReady);
     // Consent form needs a visible Activity, so start after the first frame.
     // Skipped entirely for Pro users (no ads, so no consent needed).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -108,6 +116,7 @@ class _RootShellState extends State<RootShell> {
 
   @override
   void dispose() {
+    AdService.adsReady.removeListener(_onAdsReady);
     _regeneratePrefill.dispose();
     _scanActive.dispose();
     super.dispose();
@@ -139,7 +148,9 @@ class _RootShellState extends State<RootShell> {
               children: _screens,
             ),
           ),
-          const BannerAdWidget(),
+          // No banner on the Scan tab: the camera needs the whole screen and
+          // an ad next to it invites accidental taps.
+          BannerAdWidget(visible: _currentIndex != 0),
         ],
       ),
       bottomNavigationBar: NavigationBar(

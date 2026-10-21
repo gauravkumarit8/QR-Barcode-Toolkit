@@ -14,11 +14,24 @@ class AdService {
 
   // Google's official Android test banner unit.
   static const _testBannerUnitId = 'ca-app-pub-3940256099942544/6300978111';
+  // Google's official Android test rewarded and native units.
+  static const _testRewardedUnitId = 'ca-app-pub-3940256099942544/5224354917';
+  static const _testNativeUnitId = 'ca-app-pub-3940256099942544/2247696110';
   // TODO: replace with your real banner ad unit ID from the AdMob console.
   static const _prodBannerUnitId = 'REPLACE_WITH_YOUR_BANNER_AD_UNIT_ID';
+  // TODO: create a Rewarded ad unit and a Native ad unit in AdMob, then paste
+  // their IDs here before setting useTestAds to false.
+  static const _prodRewardedUnitId = 'REPLACE_WITH_YOUR_REWARDED_AD_UNIT_ID';
+  static const _prodNativeUnitId = 'REPLACE_WITH_YOUR_NATIVE_AD_UNIT_ID';
 
   static String get bannerUnitId =>
       useTestAds ? _testBannerUnitId : _prodBannerUnitId;
+
+  static String get rewardedUnitId =>
+      useTestAds ? _testRewardedUnitId : _prodRewardedUnitId;
+
+  static String get nativeUnitId =>
+      useTestAds ? _testNativeUnitId : _prodNativeUnitId;
 
   /// True once consent is resolved and the Mobile Ads SDK is initialized.
   static final ValueNotifier<bool> adsReady = ValueNotifier(false);

@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/history_item.dart';
+import '../services/ad_pacing.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
+import '../utils/ad_layout.dart';
 import '../utils/csv_builder.dart';
 import '../utils/scan_content.dart';
+import '../widgets/native_ad_tile.dart';
 import '../widgets/pro_gate.dart';
 import '../widgets/safety_dialogs.dart';
 
@@ -95,10 +98,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _snack('Nothing to export');
       return;
     }
-    if (!ProService.isPro.value) {
-      await showProRequired(context, feature: 'Export to CSV');
-      return;
-    }
+    if (!await unlockOrWatchAd(context, feature: 'Export to CSV')) return;
+    if (!mounted) return;
     final rows = [
       for (final i in items)
         [
@@ -181,6 +182,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
 
     final items = _filtered(all);
+    final showAds = !ProService.isPro.value && AdPacing.passiveAdsAllowed;
 
     return Column(
       children: [
@@ -246,9 +248,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 )
               : ListView.builder(
-                  itemCount: items.length,
+                  itemCount: showAds ? AdLayout.totalCount(items.length) : items.length,
                   itemBuilder: (context, index) {
-                    final item = items[index];
+                    // A native ad between items for free users (see AdLayout).
+                    if (showAds && AdLayout.isAdIndex(index, items.length)) {
+                      return NativeAdTile(key: ValueKey('native-ad-$index'));
+                    }
+                    final item =
+                        items[showAds ? AdLayout.itemIndex(index, items.length) : index];
                     return Dismissible(
                       key: ValueKey(item.id),
                       direction: DismissDirection.endToStart,
