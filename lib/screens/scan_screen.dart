@@ -5,12 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../main.dart'
     show autoSaveScansNotifier, hapticFeedbackNotifier, soundFeedbackNotifier;
 import '../models/history_item.dart';
 import '../services/export_service.dart';
+import '../services/review_prompt.dart';
+import '../services/share_service.dart';
 import '../services/history_service.dart';
 import '../utils/contact_card.dart';
 import '../utils/csv_builder.dart';
@@ -538,7 +539,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                           label: const Text('Copy all'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: () => Share.share(_batchAsText()),
+                          onPressed: () => ShareService.text(_batchAsText()),
                           icon: const Icon(Icons.share_outlined),
                           label: const Text('Share list'),
                         ),
@@ -576,6 +577,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     final csv = CsvBuilder.build(const ['date_time', 'type', 'format', 'value'], rows);
     try {
       await ExportService.shareCsv(csv, baseName: 'qr-toolkit-batch');
+      ReviewPrompt.recordPositiveAction();
     } catch (_) {
       _snack('Could not create the CSV file');
     }
@@ -786,7 +788,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                 primary: _primaryAction(content),
                 savedToHistory: _savedToHistory,
                 onCopy: () => _copyText(content.raw, 'Copied to clipboard'),
-                onShare: () => Share.share(content.raw),
+                onShare: () => ShareService.text(content.raw),
                 onSave: _saveToHistory,
                 onDismiss: _dismissResult,
               ),

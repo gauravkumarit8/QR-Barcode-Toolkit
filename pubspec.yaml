@@ -12,7 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.6
 
   # Scanning
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.4.2
   image_picker: ^1.1.2
 
   # Generation
@@ -32,7 +32,7 @@ dependencies:
   gal: ^2.3.0
 
   # Sharing
-  share_plus: ^9.0.0
+  share_plus: ^13.3.1
 
   # Opening scanned links safely
   url_launcher: ^6.3.0
@@ -41,7 +41,10 @@ dependencies:
   in_app_purchase: ^3.2.0
 
   # App version display in Settings
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.2.2
+
+  # Google's in-app rating sheet (shown rarely, after the user got value)
+  in_app_review: ^2.0.9
 
 dev_dependencies:
   flutter_test:
