@@ -684,7 +684,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   /// Shares the card as a .vcf file; choosing Contacts in the share sheet
   /// opens the phone's own "add contact" screen.
-  Future<void> _saveContact(ContactInfo contact) async {
+  Future<void> _saveContact(ContactCard contact) async {
     try {
       await ExportService.shareTextFile(
         contact.toVCard(),

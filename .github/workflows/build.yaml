@@ -27,8 +27,10 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Analyze (non-blocking for now)
-        run: flutter analyze || true
+      # Fails the build on compile errors (like a name clash) but not on style
+      # hints or warnings, so old code does not block you.
+      - name: Analyze (errors only)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Unit tests
         run: flutter test
@@ -60,6 +62,12 @@ jobs:
           cache: true
 
       - run: flutter pub get
+
+      - name: Analyze (errors only)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Unit tests
+        run: flutter test
 
       - name: Release safety checks
         run: |

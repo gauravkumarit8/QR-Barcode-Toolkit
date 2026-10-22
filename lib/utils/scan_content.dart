@@ -81,7 +81,7 @@ class ScanContent {
   final PaymentInfo? payment;
 
   /// Set for contact (vCard / MECARD).
-  final ContactInfo? contact;
+  final ContactCard? contact;
 
   /// Set for event (calendar VEVENT).
   final EventInfo? event;
@@ -118,7 +118,7 @@ class ScanContent {
     if (emv != null) return ScanContent._(ScanKind.payment, raw, payment: emv);
 
     if (lower.startsWith('begin:vcard') || lower.startsWith('mecard:')) {
-      final contact = ContactInfo.parse(value);
+      final contact = ContactCard.parse(value);
       if (contact != null) return ScanContent._(ScanKind.contact, raw, contact: contact);
     }
 

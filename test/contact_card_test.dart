@@ -28,9 +28,9 @@ const _event = 'BEGIN:VCALENDAR\n'
     'END:VCALENDAR';
 
 void main() {
-  group('ContactInfo.parse — vCard', () {
+  group('ContactCard.parse — vCard', () {
     test('reads all the common fields', () {
-      final c = ContactInfo.parse(_vcard)!;
+      final c = ContactCard.parse(_vcard)!;
       expect(c.name, 'Asha Rao');
       expect(c.organization, 'Acme Traders, Sales');
       expect(c.title, 'Manager');
@@ -42,43 +42,43 @@ void main() {
     });
 
     test('Windows line endings work too', () {
-      final c = ContactInfo.parse(_vcard.replaceAll('\n', '\r\n'))!;
+      final c = ContactCard.parse(_vcard.replaceAll('\n', '\r\n'))!;
       expect(c.name, 'Asha Rao');
       expect(c.phones.length, 2);
     });
 
     test('a name is built from N when FN is missing', () {
-      final c = ContactInfo.parse('BEGIN:VCARD\nN:Rao;Asha;;;\nTEL:123\nEND:VCARD')!;
+      final c = ContactCard.parse('BEGIN:VCARD\nN:Rao;Asha;;;\nTEL:123\nEND:VCARD')!;
       expect(c.name, 'Asha Rao');
     });
 
     test('folded lines are joined', () {
-      final c = ContactInfo.parse('BEGIN:VCARD\nFN:Asha\nNOTE:Hello \n world\nEND:VCARD')!;
+      final c = ContactCard.parse('BEGIN:VCARD\nFN:Asha\nNOTE:Hello \n world\nEND:VCARD')!;
       expect(c.note, 'Hello world');
     });
 
     test('group prefixes and tel: prefixes are removed', () {
-      final c = ContactInfo.parse(
+      final c = ContactCard.parse(
         'BEGIN:VCARD\nFN:A B\nitem1.TEL;VALUE=uri:tel:+123\nEND:VCARD',
       )!;
       expect(c.phones, ['+123']);
     });
 
     test('no usable field means no contact', () {
-      expect(ContactInfo.parse('BEGIN:VCARD\nVERSION:3.0\nEND:VCARD'), isNull);
-      expect(ContactInfo.parse('hello'), isNull);
+      expect(ContactCard.parse('BEGIN:VCARD\nVERSION:3.0\nEND:VCARD'), isNull);
+      expect(ContactCard.parse('hello'), isNull);
     });
 
     test('at most five phones are kept', () {
       final tels = [for (var i = 0; i < 9; i++) 'TEL:10$i'].join('\n');
-      final c = ContactInfo.parse('BEGIN:VCARD\nFN:A B\n$tels\nEND:VCARD')!;
-      expect(c.phones.length, ContactInfo.maxEntries);
+      final c = ContactCard.parse('BEGIN:VCARD\nFN:A B\n$tels\nEND:VCARD')!;
+      expect(c.phones.length, ContactCard.maxEntries);
     });
   });
 
-  group('ContactInfo.parse — MECARD', () {
+  group('ContactCard.parse — MECARD', () {
     test('reads fields, flips "Family,Given", handles escapes', () {
-      final c = ContactInfo.parse(
+      final c = ContactCard.parse(
         r'MECARD:N:Doe,John;TEL:+123456;TEL:+654321;EMAIL:j@x.com;ORG:Foo\;Bar;URL:https\://x.com;NOTE:hi;;',
       )!;
       expect(c.name, 'John Doe');
@@ -90,17 +90,17 @@ void main() {
     });
 
     test('a name without a comma is used as is', () {
-      expect(ContactInfo.parse('MECARD:N:Madonna;TEL:1;;')!.name, 'Madonna');
+      expect(ContactCard.parse('MECARD:N:Madonna;TEL:1;;')!.name, 'Madonna');
     });
 
     test('an empty MECARD is not a contact', () {
-      expect(ContactInfo.parse('MECARD:;;'), isNull);
+      expect(ContactCard.parse('MECARD:;;'), isNull);
     });
   });
 
-  group('ContactInfo.toVCard', () {
+  group('ContactCard.toVCard', () {
     test('writes a vCard 3.0 file', () {
-      const c = ContactInfo(name: 'John Doe', phones: ['+123456'], emails: ['j@x.com']);
+      const c = ContactCard(name: 'John Doe', phones: ['+123456'], emails: ['j@x.com']);
       final v = c.toVCard();
       expect(v, startsWith('BEGIN:VCARD\r\nVERSION:3.0\r\n'));
       expect(v, contains('FN:John Doe\r\n'));
@@ -111,8 +111,8 @@ void main() {
     });
 
     test('what we write can be read back', () {
-      final original = ContactInfo.parse(_vcard)!;
-      final again = ContactInfo.parse(original.toVCard())!;
+      final original = ContactCard.parse(_vcard)!;
+      final again = ContactCard.parse(original.toVCard())!;
       expect(again.name, original.name);
       expect(again.organization, original.organization);
       expect(again.title, original.title);

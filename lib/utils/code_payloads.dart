@@ -120,7 +120,7 @@ class CodePayloads {
     final url = normalizeUrl(website);
     if (mail.isNotEmpty && !isValidEmail(mail)) return '';
     if (n.isEmpty && org.isEmpty && tel.isEmpty && mail.isEmpty) return '';
-    return ContactInfo(
+    return ContactCard(
       name: n.isEmpty ? null : n,
       organization: org.isEmpty ? null : org,
       phones: tel.isEmpty ? const [] : [tel],

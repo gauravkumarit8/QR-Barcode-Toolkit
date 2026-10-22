@@ -59,7 +59,7 @@ String _escape(String s) => s
 
 String _oneLine(String s) => s.replaceAll(RegExp(r'[\r\n]+'), ' ');
 
-class ContactInfo {
+class ContactCard {
   /// Largest number of phones, emails and links kept from one card.
   static const int maxEntries = 5;
 
@@ -72,7 +72,7 @@ class ContactInfo {
   final String? address;
   final String? note;
 
-  const ContactInfo({
+  const ContactCard({
     this.name,
     this.organization,
     this.title,
@@ -90,7 +90,7 @@ class ContactInfo {
 
   /// Returns null unless [raw] is a vCard or MECARD with at least a name,
   /// organization, phone number or email address.
-  static ContactInfo? parse(String raw) {
+  static ContactCard? parse(String raw) {
     final text = raw.trim();
     final lower = text.toLowerCase();
     if (lower.startsWith('begin:vcard')) return _parseVCard(text);
@@ -98,7 +98,7 @@ class ContactInfo {
     return null;
   }
 
-  static ContactInfo? _build({
+  static ContactCard? _build({
     String? name,
     String? organization,
     String? title,
@@ -111,7 +111,7 @@ class ContactInfo {
     final p = phones.take(maxEntries).toList();
     final e = emails.take(maxEntries).toList();
     if (name == null && organization == null && p.isEmpty && e.isEmpty) return null;
-    return ContactInfo(
+    return ContactCard(
       name: name,
       organization: organization,
       title: title,
@@ -123,7 +123,7 @@ class ContactInfo {
     );
   }
 
-  static ContactInfo? _parseVCard(String text) {
+  static ContactCard? _parseVCard(String text) {
     String? fn, given, family, org, title, address, note;
     final phones = <String>[], emails = <String>[], urls = <String>[];
 
@@ -179,7 +179,7 @@ class ContactInfo {
     );
   }
 
-  static ContactInfo? _parseMeCard(String body) {
+  static ContactCard? _parseMeCard(String body) {
     String? name, org, address, note;
     final phones = <String>[], emails = <String>[], urls = <String>[];
 
