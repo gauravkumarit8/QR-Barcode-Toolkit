@@ -6,7 +6,7 @@ import '../services/ad_pacing.dart';
 import '../services/export_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
-import '../utils/ad_layout.dart';
+import '../utils/history_rows.dart';
 import '../utils/csv_builder.dart';
 import '../utils/scan_content.dart';
 import '../widgets/native_ad_tile.dart';
@@ -183,6 +183,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     final items = _filtered(all);
     final showAds = !ProService.isPro.value && AdPacing.passiveAdsAllowed;
+    final rows = HistoryRows.build(items, now: DateTime.now(), showAds: showAds);
 
     return Column(
       children: [
@@ -248,14 +249,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 )
               : ListView.builder(
-                  itemCount: showAds ? AdLayout.totalCount(items.length) : items.length,
+                  itemCount: rows.length,
                   itemBuilder: (context, index) {
-                    // A native ad between items for free users (see AdLayout).
-                    if (showAds && AdLayout.isAdIndex(index, items.length)) {
+                    final row = rows[index];
+                    // A native ad between items for free users (see HistoryRows).
+                    if (row.kind == HistoryRowKind.ad) {
                       return NativeAdTile(key: ValueKey('native-ad-$index'));
                     }
-                    final item =
-                        items[showAds ? AdLayout.itemIndex(index, items.length) : index];
+                    if (row.kind == HistoryRowKind.header) {
+                      return _DayHeader(label: row.label!);
+                    }
+                    final item = items[row.itemIndex!];
                     return Dismissible(
                       key: ValueKey(item.id),
                       direction: DismissDirection.endToStart,
@@ -299,6 +303,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (diff.inDays < 1) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
     return '${dt.day}/${dt.month}/${dt.year}';
+  }
+}
+
+/// The "Today" / "Yesterday" / date heading above a group of items.
+class _DayHeader extends StatelessWidget {
+  final String label;
+
+  const _DayHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+      ),
+    );
   }
 }
 

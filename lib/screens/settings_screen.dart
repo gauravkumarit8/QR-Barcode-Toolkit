@@ -138,6 +138,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.qr_code_scanner),
+                  title: const Text('Scan from anywhere'),
+                  subtitle: const Text('Add the "Scan QR" tile to Quick Settings'),
+                  onTap: _showTileHelp,
+                ),
+                const Divider(),
                 if (_showPrivacyOptions)
                   ListTile(
                     title: const Text('Ad privacy settings'),
@@ -184,6 +191,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  void _showTileHelp() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Quick Settings tile'),
+        content: const Text(
+          '1. Swipe down from the top of the screen to open Quick Settings (on some '
+          'phones, swipe down twice).\n\n'
+          '2. Tap the pencil (edit) icon.\n\n'
+          '3. Drag the "Scan QR" tile into your active tiles.\n\n'
+          'One tap on the tile then opens the scanner. The steps differ a little '
+          'between phone makers.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
     );
   }
 
