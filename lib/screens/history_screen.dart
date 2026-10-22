@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import '../models/history_item.dart';
 import '../services/ad_pacing.dart';
 import '../services/export_service.dart';
+import '../services/review_prompt.dart';
+import '../services/share_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
 import '../utils/ad_layout.dart';
@@ -116,6 +117,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
     try {
       await ExportService.shareCsv(csv, baseName: 'qr-toolkit-history');
+      ReviewPrompt.recordPositiveAction();
     } catch (_) {
       _snack('Could not create the CSV file');
     }
@@ -372,7 +374,7 @@ class _DetailSheet extends StatelessWidget {
               TextButton.icon(
                 icon: const Icon(Icons.share_outlined),
                 label: const Text('Share'),
-                onPressed: () => Share.share(item.value),
+                onPressed: () => ShareService.text(item.value),
               ),
               TextButton.icon(
                 icon: const Icon(Icons.refresh),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'share_service.dart';
 
 /// Writes files to a temporary folder and opens the system share sheet.
 class ExportService {
@@ -15,7 +16,7 @@ class ExportService {
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$baseName-${_stamp()}.csv');
     await file.writeAsBytes(bytes, flush: true);
-    await Share.shareXFiles(
+    await ShareService.files(
       [XFile(file.path, mimeType: 'text/csv')],
       subject: 'QR & Barcode Toolkit export',
     );
@@ -32,7 +33,7 @@ class ExportService {
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$baseName-${_stamp()}.$extension');
     await file.writeAsString(content, flush: true);
-    await Share.shareXFiles(
+    await ShareService.files(
       [XFile(file.path, mimeType: mimeType)],
       subject: 'QR & Barcode Toolkit export',
     );

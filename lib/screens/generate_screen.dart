@@ -9,6 +9,8 @@ import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/history_item.dart';
 import '../services/export_service.dart';
+import '../services/review_prompt.dart';
+import '../services/share_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
 import '../utils/code_payloads.dart';
@@ -266,6 +268,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
         SnackBar(content: Text(ok ? 'Saved to gallery' : 'Save failed')),
       );
     }
+    if (ok) ReviewPrompt.recordPositiveAction();
   }
 
   Future<void> _share() async {
@@ -278,13 +281,14 @@ class _GenerateScreenState extends State<GenerateScreen> {
           const SnackBar(content: Text('Could not attach the image — sharing text only')),
         );
       }
-      await Share.share(shareText);
+      await ShareService.text(shareText);
       return;
     }
-    await Share.shareXFiles(
+    await ShareService.files(
       [XFile.fromData(bytes, name: 'code.png', mimeType: 'image/png')],
       text: shareText,
     );
+    ReviewPrompt.recordPositiveAction();
   }
 
   void _snack(String message) {
@@ -366,6 +370,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
       ok = false;
     }
     _snack(ok ? 'Saved a 2048 px image to your gallery' : 'Save failed');
+    if (ok) ReviewPrompt.recordPositiveAction();
   }
 
   Future<void> _exportSvg() async {
