@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main,plugin-upgrade ]
     tags: [ 'v*' ]
   workflow_dispatch: {}
 
