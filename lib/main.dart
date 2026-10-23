@@ -5,6 +5,7 @@ import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/ad_pacing.dart';
 import 'services/ad_service.dart';
+import 'services/error_log.dart';
 import 'services/pro_service.dart';
 import 'services/purchase_service.dart';
 import 'services/rewarded_ad_service.dart';
@@ -27,6 +28,17 @@ final ValueNotifier<bool> soundFeedbackNotifier = ValueNotifier(false);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Keep the last few errors on the device. They are only ever sent if the
+  // user adds them to a support email (Settings > Contact support).
+  final previousOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    previousOnError?.call(details);
+    ErrorLog.record(details.exception, details.stack, source: 'flutter');
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    ErrorLog.record(error, stack, source: 'async');
+    return false; // keep the default handling as well
+  };
   final settings = SettingsService();
   themeModeNotifier.value = await settings.getThemeMode();
   autoSaveScansNotifier.value = await settings.getAutoSaveScans();

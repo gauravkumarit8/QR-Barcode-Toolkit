@@ -1,11 +1,15 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../main.dart' show themeModeNotifier, autoSaveScansNotifier;
+import '../main.dart'
+    show themeModeNotifier, autoSaveScansNotifier, hapticFeedbackNotifier, soundFeedbackNotifier;
 import '../services/ad_service.dart';
+import '../services/error_log.dart';
 import '../services/pro_service.dart';
 import '../services/purchase_service.dart';
 import '../services/settings_service.dart';
+import '../utils/feedback_report.dart';
 
 const _privacyPolicyUrl =
     'https://gauravkumarit8.github.io/qr-barcode-toolkit/privacy-policy.html';
@@ -137,12 +141,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     await _settingsService.setAutoSaveScans(value);
                   },
                 ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.qr_code_scanner),
-                  title: const Text('Scan from anywhere'),
-                  subtitle: const Text('Add the "Scan QR" tile to Quick Settings'),
-                  onTap: _showTileHelp,
+                ValueListenableBuilder<bool>(
+                  valueListenable: hapticFeedbackNotifier,
+                  builder: (context, value, _) => SwitchListTile(
+                    title: const Text('Vibrate on scan'),
+                    subtitle: const Text('A short buzz when a code is read'),
+                    value: value,
+                    onChanged: (v) async {
+                      hapticFeedbackNotifier.value = v;
+                      await _settingsService.setHapticFeedback(v);
+                    },
+                  ),
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: soundFeedbackNotifier,
+                  builder: (context, value, _) => SwitchListTile(
+                    title: const Text('Scan sound'),
+                    subtitle: const Text('A soft click when a code is read'),
+                    value: value,
+                    onChanged: (v) async {
+                      soundFeedbackNotifier.value = v;
+                      await _settingsService.setSoundFeedback(v);
+                    },
+                  ),
                 ),
                 const Divider(),
                 if (_showPrivacyOptions)
@@ -166,14 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   title: const Text('Contact support'),
                   trailing: const Icon(Icons.email_outlined, size: 18),
-                  onTap: () async {
-                    final uri = Uri(
-                      scheme: 'mailto',
-                      path: _supportEmail,
-                      query: 'subject=${Uri.encodeComponent('QR Barcode Toolkit — Support')}',
-                    );
-                    await launchUrl(uri);
-                  },
+                  onTap: _contactSupport,
                 ),
                 ListTile(
                   title: const Text('Report an ad'),
@@ -194,27 +208,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showTileHelp() {
-    showDialog<void>(
+  /// Opens an email to support. The user chooses whether technical details
+  /// are added, and can read and edit the email before sending it.
+  Future<void> _contactSupport() async {
+    final withDetails = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Quick Settings tile'),
+        title: const Text('Contact support'),
         content: const Text(
-          '1. Swipe down from the top of the screen to open Quick Settings (on some '
-          'phones, swipe down twice).\n\n'
-          '2. Tap the pencil (edit) icon.\n\n'
-          '3. Drag the "Scan QR" tile into your active tiles.\n\n'
-          'One tap on the tile then opens the scanner. The steps differ a little '
-          'between phone makers.',
+          'Add technical details to the email? They help us find problems: the app '
+          'version, your phone\'s system, and the last few error messages (these can '
+          'occasionally include text from a scan). You can read and edit the email '
+          'before sending it.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Got it'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('No details'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Add details'),
           ),
         ],
       ),
     );
+    if (withDetails == null) return;
+
+    final errors = withDetails ? await ErrorLog.recent() : const <String>[];
+    final uri = FeedbackReport.mailto(
+      to: _supportEmail,
+      subject: 'QR Barcode Toolkit — Support',
+      body: FeedbackReport.body(
+        appVersion: _version,
+        phone: '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+        errors: errors,
+        includeDetails: withDetails,
+      ),
+    );
+    final opened = await launchUrl(uri);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No email app found. Write to $_supportEmail instead.')),
+      );
+    }
   }
 
   String _themeLabel(ThemeMode mode) {
