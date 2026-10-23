@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:gal/gal.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/history_item.dart';
 import '../services/export_service.dart';
@@ -14,6 +15,7 @@ import '../services/share_service.dart';
 import '../services/history_service.dart';
 import '../services/pro_service.dart';
 import '../utils/code_payloads.dart';
+import '../utils/qr_style.dart';
 import '../utils/scan_content.dart';
 import '../utils/svg_export.dart';
 import '../utils/upi_link.dart';
@@ -64,6 +66,12 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   _WifiEncryption _wifiEncryption = _WifiEncryption.wpa;
   bool _wifiHidden = false;
+
+  // QR style (Pro). Colours are 0xAARRGGBB integers, see QrStyleRules.
+  int _fgArgb = QrStyleRules.defaultForeground;
+  int _bgArgb = QrStyleRules.defaultBackground;
+  bool _rounded = false;
+  Uint8List? _logoBytes;
   _BarcodeFormat _barcodeFormat = _BarcodeFormat.code128;
 
   bool _saving = false;
@@ -214,6 +222,42 @@ class _GenerateScreenState extends State<GenerateScreen> {
   /// [targetWidth] (in pixels) is for print-quality export: the preview is
   /// vector-drawn, so rendering it at a higher scale gives a sharp image
   /// instead of an enlarged blurry one.
+  /// True when the QR code differs from plain black on white squares.
+  /// Linear barcodes are never styled.
+  bool get _styleActive =>
+      _selected != _GenType.barcode &&
+      !QrStyleRules.isDefault(
+        foreground: _fgArgb,
+        background: _bgArgb,
+        rounded: _rounded,
+        hasLogo: _logoBytes != null,
+      );
+
+  int get _errorLevel {
+    final level = QrStyleRules.ecLevel(styled: _styleActive, hasLogo: _logoBytes != null);
+    return switch (level) {
+      QrEcLevel.low => QrErrorCorrectLevel.L,
+      QrEcLevel.medium => QrErrorCorrectLevel.M,
+      QrEcLevel.high => QrErrorCorrectLevel.H,
+    };
+  }
+
+  Future<void> _pickLogo() async {
+    try {
+      final file = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 256,
+        maxHeight: 256,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() => _logoBytes = bytes);
+    } catch (_) {
+      _snack('Could not open that image');
+    }
+  }
+
   Future<Uint8List?> _capturePreviewPng({double? targetWidth}) async {
     try {
       await WidgetsBinding.instance.endOfFrame;
@@ -240,6 +284,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _savePng() async {
     if (!_hasData) return;
+    if (_styleActive && !await unlockOrWatchAd(context, feature: 'Styled QR codes')) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final bytes = await _capturePreviewPng();
     if (!mounted) return;
@@ -273,6 +319,8 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _share() async {
     if (!_hasData) return;
+    if (_styleActive && !await unlockOrWatchAd(context, feature: 'Styled QR codes')) return;
+    if (!mounted) return;
     final bytes = await _capturePreviewPng();
     final shareText = _selected == _GenType.barcode ? _barcodeValueController.text : _qrData;
     if (bytes == null) {
@@ -439,6 +487,10 @@ class _GenerateScreenState extends State<GenerateScreen> {
           ),
           const SizedBox(height: 16),
           _buildForm(),
+          if (_selected != _GenType.barcode) ...[
+            const SizedBox(height: 8),
+            _buildStyleSection(),
+          ],
           const SizedBox(height: 24),
           Center(
             child: RepaintBoundary(
@@ -471,7 +523,36 @@ class _GenerateScreenState extends State<GenerateScreen> {
                               ),
                             ),
                           )
-                        : QrImageView(data: _qrData, version: QrVersions.auto, size: 200),
+                        : QrImageView(
+                            data: _qrData,
+                            version: QrVersions.auto,
+                            size: 200,
+                            backgroundColor: Color(_bgArgb),
+                            errorCorrectionLevel: _errorLevel,
+                            eyeStyle: QrEyeStyle(
+                              eyeShape: _rounded ? QrEyeShape.circle : QrEyeShape.square,
+                              color: Color(_fgArgb),
+                            ),
+                            dataModuleStyle: QrDataModuleStyle(
+                              dataModuleShape:
+                                  _rounded ? QrDataModuleShape.circle : QrDataModuleShape.square,
+                              color: Color(_fgArgb),
+                            ),
+                            embeddedImage: _logoBytes == null
+                                ? null
+                                : ResizeImage(MemoryImage(_logoBytes!), width: 128),
+                            embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(44, 44)),
+                            errorStateBuilder: (context, error) => const SizedBox(
+                              width: 200,
+                              height: 200,
+                              child: Center(
+                                child: Text(
+                                  'Too much data for this style.\nTry a shorter text or remove the logo.',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                          ),
               ),
             ),
           ),
@@ -526,6 +607,87 @@ class _GenerateScreenState extends State<GenerateScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStyleSection() {
+    final isPro = ProService.isPro.value;
+    final labelStyle = Theme.of(context).textTheme.labelLarge;
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      title: Row(
+        children: [
+          const Text('Style'),
+          const SizedBox(width: 8),
+          if (!isPro)
+            const Chip(label: Text('Pro'), visualDensity: VisualDensity.compact),
+        ],
+      ),
+      subtitle: const Text('Colors, rounded dots, logo'),
+      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Code color', style: labelStyle),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            for (final c in QrStyleRules.foregrounds)
+              _ColorDot(
+                argb: c.argb,
+                label: c.name,
+                selected: _fgArgb == c.argb,
+                onTap: () => setState(() => _fgArgb = c.argb),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text('Background', style: labelStyle),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            for (final c in QrStyleRules.backgrounds)
+              _ColorDot(
+                argb: c.argb,
+                label: c.name,
+                selected: _bgArgb == c.argb,
+                onTap: () => setState(() => _bgArgb = c.argb),
+              ),
+          ],
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Rounded dots'),
+          value: _rounded,
+          onChanged: (v) => setState(() => _rounded = v),
+        ),
+        Wrap(
+          spacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickLogo,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(_logoBytes == null ? 'Add logo' : 'Change logo'),
+            ),
+            if (_logoBytes != null)
+              TextButton(
+                onPressed: () => setState(() => _logoBytes = null),
+                child: const Text('Remove logo'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Only dark-on-light colors are offered, because scanners need them. '
+          'Try any style for free; saving or sharing a styled code needs Pro, '
+          'or one short ad. SVG export is always plain black and white. '
+          'Test a styled code with a scanner before you print it.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 
@@ -841,5 +1003,49 @@ class _GenerateScreenState extends State<GenerateScreen> {
       case _GenType.barcode:
         return 'Barcode';
     }
+  }
+}
+
+/// A round colour swatch used in the style options.
+class _ColorDot extends StatelessWidget {
+  final int argb;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ColorDot({
+    required this.argb,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Color(argb),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? scheme.primary : scheme.outline,
+                width: selected ? 3 : 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
