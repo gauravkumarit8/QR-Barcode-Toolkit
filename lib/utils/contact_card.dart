@@ -396,7 +396,7 @@ class EventInfo {
       'UID:$uid',
       'DTSTAMP:$stamp',
       _startLine,
-      if (_endLine != null) _endLine!,
+      if (_endLine != null) _endLine,
       'SUMMARY:${_escape(title ?? 'Event')}',
       if (location != null) 'LOCATION:${_escape(location!)}',
       if (description != null) 'DESCRIPTION:${_escape(description!)}',

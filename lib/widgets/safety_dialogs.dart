@@ -55,9 +55,10 @@ void _toast(BuildContext context, String message) {
 Future<void> _launch(BuildContext context, Uri uri, String failureMessage) async {
   try {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted) return;
     if (!ok) _toast(context, failureMessage);
   } catch (_) {
-    _toast(context, failureMessage);
+    if (context.mounted) _toast(context, failureMessage);
   }
 }
 

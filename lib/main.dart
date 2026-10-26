@@ -85,7 +85,7 @@ class QrBarcodeToolkitApp extends StatelessWidget {
               // null follows the phone's language; unsupported languages use English.
               locale: languageCode == null ? null : Locale(languageCode),
               supportedLocales: AppStrings.supportedLocales,
-              localizationsDelegates: [
+              localizationsDelegates: const [
                 AppStrings.delegate,
                 GlobalMaterialLocalizations.delegate,
                 GlobalWidgetsLocalizations.delegate,
