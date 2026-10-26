@@ -2,18 +2,27 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_strings.dart';
+import '../l10n/translations.dart';
 import '../main.dart'
-    show themeModeNotifier, autoSaveScansNotifier, hapticFeedbackNotifier, soundFeedbackNotifier;
+    show
+        themeModeNotifier,
+        autoSaveScansNotifier,
+        hapticFeedbackNotifier,
+        soundFeedbackNotifier,
+        languageNotifier;
 import '../services/ad_service.dart';
 import '../services/error_log.dart';
 import '../services/pro_service.dart';
 import '../services/purchase_service.dart';
 import '../services/settings_service.dart';
+import '../services/share_service.dart';
 import '../utils/feedback_report.dart';
 
-const _privacyPolicyUrl =
-    'https://gauravkumarit8.github.io/qr-barcode-toolkit/privacy-policy.html';
+const _privacyPolicyUrl = 'https://grvthakur.bid/qr-barcode-toolkit/privacy-policy.html';
 const _supportEmail = 'gaurav954624@gmail.com';
+const _playStoreUrl =
+    'https://play.google.com/store/apps/details?id=com.grv.qr_barcode_toolkit';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -67,8 +76,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(s.t('settings.title'))),
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -81,10 +91,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ]),
                   builder: (context, _) {
                     if (ProService.isPro.value) {
-                      return const ListTile(
-                        leading: Icon(Icons.verified_outlined),
-                        title: Text('Pro unlocked'),
-                        subtitle: Text('Ads removed · Unlimited history'),
+                      return ListTile(
+                        leading: const Icon(Icons.verified_outlined),
+                        title: Text(s.t('settings.proUnlocked')),
+                        subtitle: Text(s.t('settings.proUnlockedSubtitle')),
                       );
                     }
                     final product = PurchaseService.product.value;
@@ -93,16 +103,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         ListTile(
                           leading: const Icon(Icons.workspace_premium_outlined),
-                          title: const Text('Upgrade to Pro'),
-                          subtitle: const Text('One-time purchase · Remove ads · Unlimited history'),
+                          title: Text(s.t('settings.upgrade')),
+                          subtitle: Text(s.t('settings.upgradeSubtitle')),
                           trailing: FilledButton(
                             onPressed: (product == null || busy) ? null : PurchaseService.buyPro,
-                            child: Text(busy ? '…' : (product?.price ?? 'Unavailable')),
+                            child: Text(busy ? '…' : (product?.price ?? s.t('settings.unavailable'))),
                           ),
                         ),
                         ListTile(
-                          title: const Text('Restore purchases'),
-                          subtitle: const Text('Already bought Pro? Re-activate it here'),
+                          title: Text(s.t('settings.restore')),
+                          subtitle: Text(s.t('settings.restoreSubtitle')),
                           onTap: busy ? null : PurchaseService.restore,
                         ),
                       ],
@@ -113,15 +123,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ValueListenableBuilder<ThemeMode>(
                   valueListenable: themeModeNotifier,
                   builder: (context, mode, _) => ListTile(
-                    title: const Text('Theme'),
-                    subtitle: Text(_themeLabel(mode)),
+                    title: Text(s.t('settings.theme')),
+                    subtitle: Text(_themeLabel(mode, s)),
                     trailing: DropdownButton<ThemeMode>(
                       value: mode,
                       underline: const SizedBox.shrink(),
-                      items: const [
-                        DropdownMenuItem(value: ThemeMode.system, child: Text('System')),
-                        DropdownMenuItem(value: ThemeMode.light, child: Text('Light')),
-                        DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+                      items: [
+                        DropdownMenuItem(
+                            value: ThemeMode.system, child: Text(s.t('settings.themeSystem'))),
+                        DropdownMenuItem(
+                            value: ThemeMode.light, child: Text(s.t('settings.themeLight'))),
+                        DropdownMenuItem(
+                            value: ThemeMode.dark, child: Text(s.t('settings.themeDark'))),
                       ],
                       onChanged: (newMode) async {
                         if (newMode == null) return;
@@ -131,9 +144,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+                ValueListenableBuilder<String?>(
+                  valueListenable: languageNotifier,
+                  builder: (context, code, _) => ListTile(
+                    title: Text(s.t('settings.language')),
+                    subtitle: Text(code == null
+                        ? s.t('settings.languageSystem')
+                        : (Translations.languageNames[code] ?? code)),
+                    trailing: DropdownButton<String>(
+                      value: code ?? 'system',
+                      underline: const SizedBox.shrink(),
+                      items: [
+                        DropdownMenuItem(
+                            value: 'system', child: Text(s.t('settings.languageSystem'))),
+                        for (final c in Translations.languageCodes)
+                          DropdownMenuItem(
+                              value: c, child: Text(Translations.languageNames[c] ?? c)),
+                      ],
+                      onChanged: (chosen) async {
+                        if (chosen == null) return;
+                        final newCode = chosen == 'system' ? null : chosen;
+                        languageNotifier.value = newCode;
+                        await _settingsService.setLanguageCode(newCode);
+                      },
+                    ),
+                  ),
+                ),
                 SwitchListTile(
-                  title: const Text('Auto-save scans to history'),
-                  subtitle: const Text('Off: use "Save to History" manually after each scan'),
+                  title: Text(s.t('settings.autoSave')),
+                  subtitle: Text(s.t('settings.autoSaveSubtitle')),
                   value: _autoSave,
                   onChanged: (value) async {
                     setState(() => _autoSave = value);
@@ -144,8 +183,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ValueListenableBuilder<bool>(
                   valueListenable: hapticFeedbackNotifier,
                   builder: (context, value, _) => SwitchListTile(
-                    title: const Text('Vibrate on scan'),
-                    subtitle: const Text('A short buzz when a code is read'),
+                    title: Text(s.t('settings.vibrate')),
+                    subtitle: Text(s.t('settings.vibrateSubtitle')),
                     value: value,
                     onChanged: (v) async {
                       hapticFeedbackNotifier.value = v;
@@ -156,8 +195,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ValueListenableBuilder<bool>(
                   valueListenable: soundFeedbackNotifier,
                   builder: (context, value, _) => SwitchListTile(
-                    title: const Text('Scan sound'),
-                    subtitle: const Text('A soft click when a code is read'),
+                    title: Text(s.t('settings.sound')),
+                    subtitle: Text(s.t('settings.soundSubtitle')),
                     value: value,
                     onChanged: (v) async {
                       soundFeedbackNotifier.value = v;
@@ -168,19 +207,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.qr_code_scanner),
-                  title: const Text('Scan from anywhere'),
-                  subtitle: const Text('Add the "Scan QR" tile to Quick Settings'),
+                  title: Text(s.t('settings.tile')),
+                  subtitle: Text(s.t('settings.tileSubtitle')),
                   onTap: _showTileHelp,
                 ),
                 const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.share_outlined),
+                  title: Text(s.t('settings.share')),
+                  subtitle: Text(s.t('settings.shareSubtitle')),
+                  onTap: () => ShareService.text(
+                    s.t('settings.shareMessage', {'url': _playStoreUrl}),
+                  ),
+                ),
                 if (_showPrivacyOptions)
                   ListTile(
-                    title: const Text('Ad privacy settings'),
-                    subtitle: const Text('Review or change your ad consent choice'),
+                    title: Text(s.t('settings.adPrivacy')),
+                    subtitle: Text(s.t('settings.adPrivacySubtitle')),
                     onTap: AdService.showPrivacyOptions,
                   ),
                 ListTile(
-                  title: const Text('Privacy Policy'),
+                  title: Text(s.t('settings.privacyPolicy')),
                   trailing: const Icon(Icons.open_in_new, size: 18),
                   onTap: () async {
                     await launchUrl(Uri.parse(_privacyPolicyUrl),
@@ -188,17 +235,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 ListTile(
-                  title: const Text('App version'),
+                  title: Text(s.t('settings.version')),
                   subtitle: Text(_version),
                 ),
                 ListTile(
-                  title: const Text('Contact support'),
+                  title: Text(s.t('settings.contact')),
                   trailing: const Icon(Icons.email_outlined, size: 18),
                   onTap: _contactSupport,
                 ),
                 ListTile(
-                  title: const Text('Report an ad'),
-                  subtitle: const Text('Seen a misleading or inappropriate ad? Tell us'),
+                  title: Text(s.t('settings.reportAd')),
+                  subtitle: Text(s.t('settings.reportAdSubtitle')),
                   trailing: const Icon(Icons.flag_outlined, size: 18),
                   onTap: () async {
                     final uri = Uri(
@@ -218,28 +265,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Opens an email to support. The user chooses whether technical details
   /// are added, and can read and edit the email before sending it.
   Future<void> _contactSupport() async {
+    final s = AppStrings.of(context);
     final withDetails = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Contact support'),
-        content: const Text(
-          'Add technical details to the email? They help us find problems: the app '
-          'version, your phone\'s system, and the last few error messages (these can '
-          'occasionally include text from a scan). You can read and edit the email '
-          'before sending it.',
-        ),
+        title: Text(s.t('settings.contact')),
+        content: Text(s.t('settings.contactBody')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(s.t('common.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('No details'),
+            child: Text(s.t('settings.noDetails')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Add details'),
+            child: Text(s.t('settings.addDetails')),
           ),
         ],
       ),
@@ -260,42 +303,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final opened = await launchUrl(uri);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No email app found. Write to $_supportEmail instead.')),
+        SnackBar(content: Text(s.t('settings.noEmailApp', {'email': _supportEmail}))),
       );
     }
   }
 
   void _showTileHelp() {
+    final s = AppStrings.of(context);
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Quick Settings tile'),
-        content: const Text(
-          '1. Swipe down from the top of the screen to open Quick Settings (on some '
-          'phones, swipe down twice).\n\n'
-          '2. Tap the pencil (edit) icon.\n\n'
-          '3. Drag the "Scan QR" tile into your active tiles.\n\n'
-          'One tap on the tile then opens the scanner. The steps differ a little '
-          'between phone makers.',
-        ),
+        title: Text(s.t('settings.tileTitle')),
+        content: Text(s.t('settings.tileBody')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Got it'),
+            child: Text(s.t('common.gotIt')),
           ),
         ],
       ),
     );
   }
 
-  String _themeLabel(ThemeMode mode) {
+  String _themeLabel(ThemeMode mode, AppStrings s) {
     switch (mode) {
       case ThemeMode.system:
-        return 'Following system setting';
+        return s.t('settings.themeFollowing');
       case ThemeMode.light:
-        return 'Light';
+        return s.t('settings.themeLight');
       case ThemeMode.dark:
-        return 'Dark';
+        return s.t('settings.themeDark');
     }
   }
 }

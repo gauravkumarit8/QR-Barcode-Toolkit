@@ -8,6 +8,7 @@ class SettingsService {
   static const _autoSaveKey = 'auto_save_scans_v1';
   static const _hapticKey = 'haptic_feedback_v1';
   static const _soundKey = 'sound_feedback_v1';
+  static const _languageKey = 'language_code_v1';
 
   Future<ThemeMode> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -47,6 +48,21 @@ class SettingsService {
   Future<void> setHapticFeedback(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hapticKey, value);
+  }
+
+  /// The language chosen in Settings, or null to follow the phone's language.
+  Future<String?> getLanguageCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_languageKey);
+  }
+
+  Future<void> setLanguageCode(String? code) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (code == null) {
+      await prefs.remove(_languageKey);
+    } else {
+      await prefs.setString(_languageKey, code);
+    }
   }
 
   /// Click sound when a code is scanned. Off by default (quiet is safer).

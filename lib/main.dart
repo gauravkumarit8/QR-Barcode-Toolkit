@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'l10n/app_strings.dart';
 import 'screens/scan_screen.dart';
 import 'screens/generate_screen.dart';
 import 'screens/history_screen.dart';
@@ -26,6 +28,10 @@ final ValueNotifier<bool> autoSaveScansNotifier = ValueNotifier(true);
 final ValueNotifier<bool> hapticFeedbackNotifier = ValueNotifier(true);
 final ValueNotifier<bool> soundFeedbackNotifier = ValueNotifier(false);
 
+/// Language chosen in Settings (a code such as 'es'), or null to follow the
+/// phone's language.
+final ValueNotifier<String?> languageNotifier = ValueNotifier(null);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Keep the last few errors on the device. They are only ever sent if the
@@ -44,6 +50,7 @@ void main() async {
   autoSaveScansNotifier.value = await settings.getAutoSaveScans();
   hapticFeedbackNotifier.value = await settings.getHapticFeedback();
   soundFeedbackNotifier.value = await settings.getSoundFeedback();
+  languageNotifier.value = await settings.getLanguageCode();
   await ProService.load();
   await AdPacing.loadAndCountLaunch();
   PurchaseService.init();
@@ -58,21 +65,35 @@ class QrBarcodeToolkitApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
       builder: (context, themeMode, _) {
-        return MaterialApp(
-          title: 'QR & Barcode Toolkit',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            useMaterial3: true,
-            colorSchemeSeed: Colors.teal,
-            brightness: Brightness.light,
-          ),
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            colorSchemeSeed: Colors.teal,
-            brightness: Brightness.dark,
-          ),
-          themeMode: themeMode,
-          home: const RootShell(),
+        return ValueListenableBuilder<String?>(
+          valueListenable: languageNotifier,
+          builder: (context, languageCode, _) {
+            return MaterialApp(
+              title: 'QR & Barcode Toolkit',
+              debugShowCheckedModeBanner: false,
+              theme: ThemeData(
+                useMaterial3: true,
+                colorSchemeSeed: Colors.teal,
+                brightness: Brightness.light,
+              ),
+              darkTheme: ThemeData(
+                useMaterial3: true,
+                colorSchemeSeed: Colors.teal,
+                brightness: Brightness.dark,
+              ),
+              themeMode: themeMode,
+              // null follows the phone's language; unsupported languages use English.
+              locale: languageCode == null ? null : Locale(languageCode),
+              supportedLocales: AppStrings.supportedLocales,
+              localizationsDelegates: [
+                AppStrings.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              home: const RootShell(),
+            );
+          },
         );
       },
     );
@@ -96,8 +117,6 @@ class _RootShellState extends State<RootShell> {
   // camera when this goes false (other tab, or Settings open on top) so the
   // camera is not left running in the background.
   final ValueNotifier<bool> _scanActive = ValueNotifier(true);
-
-  static const _titles = ['Scan', 'Generate', 'History'];
 
   late final List<Widget> _screens = [
     ScanScreen(isActive: _scanActive),
@@ -136,9 +155,11 @@ class _RootShellState extends State<RootShell> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
+    final titles = [s.t('nav.scan'), s.t('nav.generate'), s.t('nav.history')];
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_currentIndex]),
+        title: Text(titles[_currentIndex]),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -171,21 +192,21 @@ class _RootShellState extends State<RootShell> {
           setState(() => _currentIndex = index);
           _scanActive.value = index == 0;
         },
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.qr_code_scanner_outlined),
-            selectedIcon: Icon(Icons.qr_code_scanner),
-            label: 'Scan',
+            icon: const Icon(Icons.qr_code_scanner_outlined),
+            selectedIcon: const Icon(Icons.qr_code_scanner),
+            label: titles[0],
           ),
           NavigationDestination(
-            icon: Icon(Icons.qr_code_2_outlined),
-            selectedIcon: Icon(Icons.qr_code_2),
-            label: 'Generate',
+            icon: const Icon(Icons.qr_code_2_outlined),
+            selectedIcon: const Icon(Icons.qr_code_2),
+            label: titles[1],
           ),
           NavigationDestination(
-            icon: Icon(Icons.history_outlined),
-            selectedIcon: Icon(Icons.history),
-            label: 'History',
+            icon: const Icon(Icons.history_outlined),
+            selectedIcon: const Icon(Icons.history),
+            label: titles[2],
           ),
         ],
       ),

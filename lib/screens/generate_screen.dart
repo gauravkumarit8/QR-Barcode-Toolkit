@@ -9,6 +9,7 @@ import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/history_item.dart';
+import '../l10n/app_strings.dart';
 import '../services/export_service.dart';
 import '../services/review_prompt.dart';
 import '../services/share_service.dart';
@@ -284,7 +285,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _savePng() async {
     if (!_hasData) return;
-    if (_styleActive && !await unlockOrWatchAd(context, feature: 'Styled QR codes')) return;
+    if (_styleActive && !await unlockOrWatchAd(context, feature: AppStrings.of(context).t('feature.styled'))) return;
     if (!mounted) return;
     setState(() => _saving = true);
     final bytes = await _capturePreviewPng();
@@ -319,7 +320,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _share() async {
     if (!_hasData) return;
-    if (_styleActive && !await unlockOrWatchAd(context, feature: 'Styled QR codes')) return;
+    if (_styleActive && !await unlockOrWatchAd(context, feature: AppStrings.of(context).t('feature.styled'))) return;
     if (!mounted) return;
     final bytes = await _capturePreviewPng();
     final shareText = _selected == _GenType.barcode ? _barcodeValueController.text : _qrData;
@@ -399,7 +400,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _saveHighResPng() async {
     if (!_hasData) return;
-    if (!await unlockOrWatchAd(context, feature: 'Print-quality export')) return;
+    if (!await unlockOrWatchAd(context, feature: AppStrings.of(context).t('feature.print'))) return;
     if (!mounted) return;
     setState(() => _saving = true);
     final bytes = await _capturePreviewPng(targetWidth: 2048);
@@ -423,7 +424,7 @@ class _GenerateScreenState extends State<GenerateScreen> {
 
   Future<void> _exportSvg() async {
     if (!_hasData) return;
-    if (!await unlockOrWatchAd(context, feature: 'Print-quality export')) return;
+    if (!await unlockOrWatchAd(context, feature: AppStrings.of(context).t('feature.print'))) return;
     if (!mounted) return;
     final String svg;
     try {

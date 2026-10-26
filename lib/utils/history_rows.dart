@@ -18,20 +18,44 @@ class HistoryRow {
   const HistoryRow.ad() : this._(HistoryRowKind.ad);
 }
 
+/// The words used in day headings. Defaults are English; the app passes
+/// translated ones. Lists with the wrong length are ignored (English is used),
+/// so a bad translation can never crash the History screen.
+class DayLabels {
+  final String today;
+  final String yesterday;
+
+  /// Monday first (7 entries).
+  final List<String> weekdays;
+
+  /// January first (12 entries).
+  final List<String> months;
+
+  const DayLabels({
+    this.today = 'Today',
+    this.yesterday = 'Yesterday',
+    this.weekdays = const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    this.months = const [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ],
+  });
+
+  static const DayLabels english = DayLabels();
+}
+
 /// Turns a newest-first list of history items into the rows the list shows:
 /// a heading for each day ("Today", "Yesterday", "Sun, 1 Nov", ...), with an
 /// optional native ad row between items.
 ///
 /// Pure Dart so the grouping and ad placement can be unit tested.
 class HistoryRows {
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   /// "Today", "Yesterday", "Sun, 1 Nov" (this year) or "20 Dec 2025".
-  static String dayLabel(DateTime when, DateTime now) {
+  static String dayLabel(
+    DateTime when,
+    DateTime now, {
+    DayLabels labels = DayLabels.english,
+  }) {
     final d = when.toLocal();
     final n = now.toLocal();
     // Compare calendar days with UTC dates so a daylight-saving change never
@@ -39,10 +63,12 @@ class HistoryRows {
     final days = DateTime.utc(n.year, n.month, n.day)
         .difference(DateTime.utc(d.year, d.month, d.day))
         .inDays;
-    if (days == 0) return 'Today';
-    if (days == 1) return 'Yesterday';
-    final base = '${d.day} ${_months[d.month - 1]}';
-    if (d.year == n.year) return '${_weekdays[d.weekday - 1]}, $base';
+    if (days == 0) return labels.today;
+    if (days == 1) return labels.yesterday;
+    final months = labels.months.length == 12 ? labels.months : DayLabels.english.months;
+    final weekdays = labels.weekdays.length == 7 ? labels.weekdays : DayLabels.english.weekdays;
+    final base = '${d.day} ${months[d.month - 1]}';
+    if (d.year == n.year) return '${weekdays[d.weekday - 1]}, $base';
     return '$base ${d.year}';
   }
 
@@ -57,6 +83,7 @@ class HistoryRows {
     bool showAds = false,
     int adEvery = 8,
     int maxAds = 2,
+    DayLabels labels = DayLabels.english,
   }) {
     final rows = <HistoryRow>[];
     String? lastLabel;
@@ -69,7 +96,7 @@ class HistoryRows {
         adsPlaced++;
         itemsSinceAd = 0;
       }
-      final label = dayLabel(items[i].timestamp, now);
+      final label = dayLabel(items[i].timestamp, now, labels: labels);
       if (label != lastLabel) {
         rows.add(HistoryRow.header(label));
         lastLabel = label;

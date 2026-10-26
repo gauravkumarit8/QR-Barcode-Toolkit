@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../l10n/app_strings.dart';
 import '../models/history_item.dart';
 import '../services/ad_pacing.dart';
 import '../services/export_service.dart';
@@ -68,15 +69,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// Deletes, then offers Undo. Undo re-adds the same item (same id, time and
   /// favorite flag), so it returns to its old position in the list.
   Future<void> _deleteWithUndo(HistoryItem item) async {
+    final s = AppStrings.of(context);
     await _delete(item.id); // setState inside runs synchronously (see _delete)
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: const Text('Deleted'),
+          content: Text(s.t('history.deleted')),
           action: SnackBarAction(
-            label: 'Undo',
+            label: s.t('common.undo'),
             onPressed: () => _historyService.add(item),
           ),
         ),
@@ -95,11 +97,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// Exports the items currently shown (respecting search / favorites filter).
   Future<void> _exportCsv(List<HistoryItem> items) async {
+    final s = AppStrings.of(context);
     if (items.isEmpty) {
-      _snack('Nothing to export');
+      _snack(s.t('history.nothingToExport'));
       return;
     }
-    if (!await unlockOrWatchAd(context, feature: 'Export to CSV')) return;
+    if (!await unlockOrWatchAd(context, feature: s.t('feature.csv'))) return;
     if (!mounted) return;
     final rows = [
       for (final i in items)
@@ -119,7 +122,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       await ExportService.shareCsv(csv, baseName: 'qr-toolkit-history');
       ReviewPrompt.recordPositiveAction();
     } catch (_) {
-      _snack('Could not create the CSV file');
+      _snack(s.t('history.csvFailed'));
     }
   }
 
@@ -170,22 +173,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final all = _items;
     if (all == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (all.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('No history yet. Scan or generate something!'),
+          padding: const EdgeInsets.all(24),
+          child: Text(s.t('history.empty')),
         ),
       );
     }
 
     final items = _filtered(all);
     final showAds = !ProService.isPro.value && AdPacing.passiveAdsAllowed;
-    final rows = HistoryRows.build(items, now: DateTime.now(), showAds: showAds);
+    final rows = HistoryRows.build(
+      items,
+      now: DateTime.now(),
+      showAds: showAds,
+      labels: DayLabels(
+        today: s.t('date.today'),
+        yesterday: s.t('date.yesterday'),
+        weekdays: s.t('date.weekdays').split('|'),
+        months: s.t('date.months').split('|'),
+      ),
+    );
 
     return Column(
       children: [
@@ -195,13 +209,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
             controller: _searchController,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search history',
+              hintText: s.t('history.searchHint'),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _query.isEmpty
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.clear),
-                      tooltip: 'Clear search',
+                      tooltip: s.t('history.clearSearch'),
                       onPressed: () {
                         _searchController.clear();
                         setState(() => _query = '');
@@ -220,21 +234,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Row(
             children: [
               ChoiceChip(
-                label: const Text('All'),
+                label: Text(s.t('history.filterAll')),
                 selected: !_favoritesOnly,
                 onSelected: (_) => setState(() => _favoritesOnly = false),
               ),
               const SizedBox(width: 8),
               ChoiceChip(
                 avatar: const Icon(Icons.star, size: 16),
-                label: const Text('Favorites'),
+                label: Text(s.t('history.filterFavorites')),
                 selected: _favoritesOnly,
                 onSelected: (_) => setState(() => _favoritesOnly = true),
               ),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.ios_share_outlined),
-                tooltip: ProService.isPro.value ? 'Export as CSV' : 'Export as CSV (Pro)',
+                tooltip: ProService.isPro.value
+                    ? s.t('history.exportCsv')
+                    : s.t('history.exportCsvPro'),
                 onPressed: () => _exportCsv(items),
               ),
             ],
@@ -246,8 +262,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(_favoritesOnly && _query.isEmpty
-                        ? 'No favorites yet — tap the star on any item to save it here'
-                        : 'No matches for "${_query.trim()}"'),
+                        ? s.t('history.noFavorites')
+                        : s.t('history.noMatches', {'query': _query.trim()})),
                   ),
                 )
               : ListView.builder(
@@ -278,13 +294,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             : Icons.qr_code_2),
                         title: Text(item.value,
                             maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(_formatTimestamp(item.timestamp)),
+                        subtitle: Text(_formatTimestamp(item.timestamp, s)),
                         trailing: IconButton(
                           icon: Icon(
                             item.favorite ? Icons.star : Icons.star_border,
                             color: item.favorite ? Colors.amber : null,
                           ),
-                          tooltip: item.favorite ? 'Remove favorite' : 'Add favorite',
+                          tooltip: item.favorite
+                              ? s.t('history.removeFavorite')
+                              : s.t('history.addFavorite'),
                           onPressed: () => _toggleFavorite(item),
                         ),
                         onTap: () => _openDetail(item),
@@ -297,13 +315,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  String _formatTimestamp(DateTime dt) {
+  String _formatTimestamp(DateTime dt, AppStrings s) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inMinutes < 1) return s.t('history.justNow');
+    if (diff.inHours < 1) return s.t('history.minutesAgo', {'n': diff.inMinutes});
+    if (diff.inDays < 1) return s.t('history.hoursAgo', {'n': diff.inHours});
+    if (diff.inDays < 7) return s.t('history.daysAgo', {'n': diff.inDays});
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 }
@@ -351,6 +369,7 @@ class _DetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -371,7 +390,9 @@ class _DetailSheet extends StatelessWidget {
                   item.favorite ? Icons.star : Icons.star_border,
                   color: item.favorite ? Colors.amber : null,
                 ),
-                tooltip: item.favorite ? 'Remove favorite' : 'Add favorite',
+                tooltip: item.favorite
+                    ? s.t('history.removeFavorite')
+                    : s.t('history.addFavorite'),
                 onPressed: onToggleFavorite,
               ),
             ],
@@ -383,7 +404,7 @@ class _DetailSheet extends StatelessWidget {
             children: [
               TextButton.icon(
                 icon: const Icon(Icons.copy_outlined),
-                label: const Text('Copy'),
+                label: Text(s.t('common.copy')),
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: item.value));
                   if (context.mounted) Navigator.pop(context);
@@ -392,7 +413,7 @@ class _DetailSheet extends StatelessWidget {
               if (_isUrl)
                 TextButton.icon(
                   icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open'),
+                  label: Text(s.t('common.open')),
                   onPressed: () {
                     final uri = Uri.tryParse(item.value);
                     if (uri != null) openLinkSafely(context, uri);
@@ -400,17 +421,17 @@ class _DetailSheet extends StatelessWidget {
                 ),
               TextButton.icon(
                 icon: const Icon(Icons.share_outlined),
-                label: const Text('Share'),
+                label: Text(s.t('common.share')),
                 onPressed: () => ShareService.text(item.value),
               ),
               TextButton.icon(
                 icon: const Icon(Icons.refresh),
-                label: const Text('Re-generate'),
+                label: Text(s.t('history.regenerate')),
                 onPressed: onRegenerate,
               ),
               TextButton.icon(
                 icon: const Icon(Icons.delete_outline, color: Colors.red),
-                label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                label: Text(s.t('common.delete'), style: const TextStyle(color: Colors.red)),
                 onPressed: onDelete,
               ),
             ],

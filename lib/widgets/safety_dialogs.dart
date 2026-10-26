@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_strings.dart';
 import '../utils/link_safety.dart';
 import '../utils/scan_content.dart';
 
@@ -65,6 +66,7 @@ Future<void> _launch(BuildContext context, Uri uri, String failureMessage) async
 /// going; the long path after it is shown small. Used for links from both
 /// the Scan result and History, so neither route skips the check.
 Future<void> openLinkSafely(BuildContext context, Uri uri) async {
+  final s = AppStrings.of(context);
   final reasons = LinkSafety.reasons(uri);
   final rest = LinkSafety.restOf(uri);
 
@@ -73,13 +75,13 @@ Future<void> openLinkSafely(BuildContext context, Uri uri) async {
     builder: (dialogContext) {
       final text = Theme.of(dialogContext).textTheme;
       return AlertDialog(
-        title: const Text('Open this link?'),
+        title: Text(s.t('safety.openLinkTitle')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('You are going to', style: text.labelMedium),
+              Text(s.t('safety.goingTo'), style: text.labelMedium),
               const SizedBox(height: 2),
               Text(
                 uri.host,
@@ -105,7 +107,7 @@ Future<void> openLinkSafely(BuildContext context, Uri uri) async {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(s.t('common.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
@@ -114,7 +116,7 @@ Future<void> openLinkSafely(BuildContext context, Uri uri) async {
                     backgroundColor: Theme.of(dialogContext).colorScheme.error,
                   )
                 : null,
-            child: Text(reasons.isNotEmpty ? 'Open anyway' : 'Open'),
+            child: Text(reasons.isNotEmpty ? s.t('safety.openAnyway') : s.t('common.open')),
           ),
         ],
       );
@@ -122,7 +124,7 @@ Future<void> openLinkSafely(BuildContext context, Uri uri) async {
   );
 
   if (proceed != true || !context.mounted) return;
-  await _launch(context, uri, 'No app found to open this link');
+  await _launch(context, uri, s.t('safety.noApp'));
 }
 
 /// Last chance before a payment app opens: says who is being paid and how
@@ -132,20 +134,23 @@ Future<void> confirmAndOpenPayment(
   Uri uri,
   PaymentInfo info,
 ) async {
-  final who = info.payeeName ?? info.payeeId ?? 'this payee';
+  final s = AppStrings.of(context);
+  final who = info.payeeName ?? info.payeeId ?? s.t('safety.payWho');
   final amount = info.amountLabel;
 
   final proceed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Open your payment app?'),
+      title: Text(s.t('safety.payTitle')),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              amount == null ? 'You are about to pay $who.' : 'You are about to pay $who $amount.',
+              amount == null
+                  ? s.t('safety.payNoAmount', {'who': who})
+                  : s.t('safety.payAmount', {'who': who, 'amount': amount}),
               style: Theme.of(dialogContext).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
@@ -156,16 +161,16 @@ Future<void> confirmAndOpenPayment(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('Cancel'),
+          child: Text(s.t('common.cancel')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('I want to pay'),
+          child: Text(s.t('safety.iWantToPay')),
         ),
       ],
     ),
   );
 
   if (proceed != true || !context.mounted) return;
-  await _launch(context, uri, 'No payment app found on this phone');
+  await _launch(context, uri, s.t('safety.noPaymentApp'));
 }

@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../main.dart'
     show autoSaveScansNotifier, hapticFeedbackNotifier, soundFeedbackNotifier;
 import '../models/history_item.dart';
+import '../l10n/app_strings.dart';
 import '../services/export_service.dart';
 import '../services/review_prompt.dart';
 import '../services/share_service.dart';
@@ -563,7 +564,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _exportBatchCsv(BuildContext sheetContext) async {
-    if (!await unlockOrWatchAd(sheetContext, feature: 'Export to CSV')) return;
+    if (!await unlockOrWatchAd(sheetContext, feature: AppStrings.of(sheetContext).t('feature.csv'))) return;
     if (!mounted) return;
     final rows = [
       for (final e in _batch)
